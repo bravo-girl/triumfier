@@ -81,6 +81,7 @@ namespace NativeViewer
                 LoadSettings();
             }
             UpdateIndentMenuChecks();
+            UpdatePrettyPrintButtons();
             RefreshRecentFilesMenu();
         }
 
@@ -221,6 +222,28 @@ namespace NativeViewer
         private void PrettyPrintMenuItem_Click(object sender, RoutedEventArgs e)
         {
             RefreshView();
+        }
+
+        private void PrettyPrintButton_Click(object sender, RoutedEventArgs e)
+        {
+            PrettyPrintMenuItem.IsChecked = true;
+            RefreshView();
+        }
+
+        private void RawTextButton_Click(object sender, RoutedEventArgs e)
+        {
+            PrettyPrintMenuItem.IsChecked = false;
+            RefreshView();
+        }
+
+        private void DecreaseIndentButton_Click(object sender, RoutedEventArgs e)
+        {
+            SetIndentSize(indentSize - 1);
+        }
+
+        private void IncreaseIndentButton_Click(object sender, RoutedEventArgs e)
+        {
+            SetIndentSize(indentSize + 1);
         }
 
         private void MarkdownRenderedMenuItem_Click(object sender, RoutedEventArgs e)
@@ -481,6 +504,20 @@ namespace NativeViewer
             Indent3MenuItem.IsChecked = indentSize == 3;
             Indent4MenuItem.IsChecked = indentSize == 4;
             Indent8MenuItem.IsChecked = indentSize == 8;
+            IncreaseIndentButton.IsEnabled = indentSize < 8;
+            DecreaseIndentButton.IsEnabled = indentSize > 1;
+        }
+
+        private void UpdatePrettyPrintButtons()
+        {
+            bool supported = currentPath != null &&
+                             (currentExtension == ".json" || currentExtension == ".xml" ||
+                              currentExtension == ".html" || currentExtension == ".htm" ||
+                              currentExtension == ".css");
+            PrettyPrintButton.IsEnabled = supported;
+            RawTextButton.IsEnabled = supported;
+            PrettyPrintButton.IsChecked = PrettyPrintMenuItem.IsChecked;
+            RawTextButton.IsChecked = !PrettyPrintMenuItem.IsChecked;
         }
 
         private void TextView_TextChanged(object sender, TextChangedEventArgs e)
@@ -522,6 +559,7 @@ namespace NativeViewer
             {
                 UpdateStatusBar();
                 UpdateEditCommandState();
+                UpdatePrettyPrintButtons();
             }
         }
 
@@ -1284,6 +1322,7 @@ namespace NativeViewer
             TextView.Visibility = Visibility.Visible;
             Grid.SetColumnSpan(TextView, 2);
             TextView.Text = message;
+            UpdatePrettyPrintButtons();
             FileNameText.Text = Path.GetFileName(path);
             FilePathText.Text = path;
             StatusText.Text = message;
@@ -1794,12 +1833,12 @@ namespace NativeViewer
             CsvView.FontSize = fontSize;
             CsvView.ItemsSource = table.DefaultView;
             StatusText.Text = "CSV – " + Math.Max(0, records.Count - 1).ToString(CultureInfo.CurrentCulture) +
-                              " Datenzeilen, Trennzeichen " + (delimiter == '\t' ? "Tab" : delimiter.ToString());
+                              " Datenzeilen, Trennzeichen " + (delimiter == ';' ? "Semikolon" : "Komma");
         }
 
         private static char DetectCsvDelimiter(string content)
         {
-            char[] candidates = { ',', ';', '\t' };
+            char[] candidates = { ',', ';' };
             char selected = ',';
             int bestCount = -1;
             foreach (char candidate in candidates)

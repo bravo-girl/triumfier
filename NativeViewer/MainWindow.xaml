@@ -71,6 +71,10 @@
                     <Button x:Name="UndoButton" Content="Rückgängig" ToolTip="Letzte Änderung rückgängig machen (Strg+Z)" Padding="10,7" Margin="4,0" Click="UndoMenuItem_Click" IsEnabled="False" />
                     <Button Content="Speichern" ToolTip="Datei speichern (F2 oder Strg+S)" Padding="10,7" Margin="4,0" Click="SaveMenuItem_Click" />
                     <Button Content="Öffnen…" ToolTip="Datei öffnen (F4 oder Strg+O)" Padding="10,7" Margin="4,0" Click="OpenButton_Click" />
+                    <ToggleButton x:Name="PrettyPrintButton" Content="Formatiert" ToolTip="Formatierte Ansicht" Padding="6,7" Margin="2,0" IsChecked="True" IsEnabled="False" Click="PrettyPrintButton_Click" />
+                    <ToggleButton x:Name="RawTextButton" Content="Rohtext" ToolTip="Unformatierten Text anzeigen" Padding="6,7" Margin="2,0" IsEnabled="False" Click="RawTextButton_Click" />
+                    <Button x:Name="DecreaseIndentButton" Content="-1" ToolTip="Einrückung um ein Leerzeichen verringern" Padding="7,7" Margin="2,0" Click="DecreaseIndentButton_Click" IsEnabled="False" />
+                    <Button x:Name="IncreaseIndentButton" Content="+1" ToolTip="Einrückung um ein Leerzeichen erhöhen" Padding="7,7" Margin="2,0" Click="IncreaseIndentButton_Click" />
                 </StackPanel>
                 <StackPanel>
                     <TextBlock x:Name="FileNameText" Text="Datei öffnen oder hier ablegen" FontSize="16" FontWeight="SemiBold" />

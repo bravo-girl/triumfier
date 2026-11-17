@@ -20,7 +20,8 @@ Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 - JSON, XML, Markdown, HTML, CSS, CSV und Text bearbeiten und speichern
 - Markdown-Quelltext mit Live-Vorschau bearbeiten
 - HTML/CSS-Quelltext formatieren
-- CSV als Tabelle mit automatisch an Zellinhalten angepassten Spalten anzeigen
+- CSV-Trennzeichen Komma/Semikolon automatisch erkennen und als Tabelle mit automatisch angepassten Spalten anzeigen
+- In der Symbolleiste zwischen formatierter Ansicht und Rohtext wechseln sowie die Einrückung per -1/+1 anpassen
 - Rückgängig/Wiederholen, Weitersuchen und Treffer markieren
 - Statusleiste mit Dateiname, Größe, Zeile/Spalte und Änderungsstatus
 - Ein-Tasten-Kürzel: F1 Hilfe, F2 Speichern, F3 Weitersuchen, F4 Öffnen, F6 Suche, F8 vorheriger Treffer
