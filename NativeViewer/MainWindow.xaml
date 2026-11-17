@@ -16,6 +16,7 @@
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_Datei">
                 <MenuItem Header="_Öffnen…" InputGestureText="Strg+O" Click="OpenButton_Click" />
+                <MenuItem x:Name="RecentFilesMenuItem" Header="Zuletzt geöffnet" />
                 <Separator />
                 <MenuItem Header="_Speichern" InputGestureText="Strg+S" Click="SaveMenuItem_Click" />
                 <MenuItem Header="Speichern _unter…" InputGestureText="Strg+Umschalt+S" Click="SaveAsMenuItem_Click" />
@@ -35,6 +36,13 @@
                     <MenuItem Header="Vergrößern" InputGestureText="Strg++" Click="IncreaseFontMenuItem_Click" />
                     <MenuItem Header="Verkleinern" InputGestureText="Strg+-" Click="DecreaseFontMenuItem_Click" />
                     <MenuItem Header="Zurücksetzen" Click="ResetFontMenuItem_Click" />
+                </MenuItem>
+                <MenuItem Header="Einrückung">
+                    <MenuItem x:Name="Indent2MenuItem" Header="2 Leerzeichen (Standard)" IsCheckable="True" Tag="2" Click="IndentSizeMenuItem_Click" />
+                    <MenuItem x:Name="Indent4MenuItem" Header="4 Leerzeichen" IsCheckable="True" Tag="4" Click="IndentSizeMenuItem_Click" />
+                    <MenuItem x:Name="Indent8MenuItem" Header="8 Leerzeichen" IsCheckable="True" Tag="8" Click="IndentSizeMenuItem_Click" />
+                    <Separator />
+                    <MenuItem Header="Benutzerdefiniert…" Click="CustomIndentSizeMenuItem_Click" />
                 </MenuItem>
             </MenuItem>
         </Menu>

@@ -14,6 +14,7 @@ Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 ## Funktionen
 
 - Dateien über **Öffnen…** auswählen oder per Drag-and-drop laden
+- Liste der 50 zuletzt geöffneten Dateien, lokal neben der EXE gespeichert
 - Datei speichern oder **Speichern unter…**; beim Überschreiben wird nachgefragt
 - JSON validieren und einrücken
 - XML validieren und formatiert anzeigen
@@ -21,10 +22,13 @@ Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 - Markdown-Ansicht und Quelltext umschalten
 - Reguläre Suche mit Weitersuchen und Beachtung der Groß-/Kleinschreibung
 - Zeilenumbruch und Schriftgröße einstellen
+- Einrückung für JSON und XML auf 1 bis 8 Leerzeichen einstellen
 - TXT-Dateien unverändert lesen
 - Ungültiges JSON/XML mit verständlichem Status anzeigen und den Originaltext beibehalten
 
 JSON und XML werden standardmäßig formatiert angezeigt. **Speichern** schreibt die formatierte JSON-/XML-Ansicht; bei Markdown und Text bleibt der Quelltext unverändert. UTF-8-, UTF-16- und UTF-32-BOMs werden erkannt und beim Speichern erhalten. Dateien ohne BOM werden als striktes UTF-8 gelesen und bleiben BOM-los. Die Markdown-Darstellung unterstützt bewusst einen häufig genutzten Teilumfang und ist kein vollständiger CommonMark-Parser.
+
+Die letzten Dateien und eine abweichende Einrückung werden in `NativeViewer.settings.xml` im EXE-Ordner gespeichert. Die Einrückung ist standardmäßig 2 Leerzeichen; dieser Wert wird nur dann in der Einstellungsdatei abgelegt, wenn er geändert wurde. Zum Schreiben der lokalen Einstellungen braucht die Anwendung Schreibrechte im EXE-Ordner.
 
 ## Build
 

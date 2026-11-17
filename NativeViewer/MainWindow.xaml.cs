@@ -1,13 +1,16 @@
 using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
 
@@ -15,20 +18,28 @@ namespace NativeViewer
 {
     public partial class MainWindow : Window
     {
+        private const int DefaultIndentSize = 2;
+        private const int MaximumRecentFiles = 50;
         private static readonly Regex MarkdownInlinePattern =
             new Regex(@"(\*\*.+?\*\*|__.+?__|`[^`]+`|\*[^*]+\*|_[^_]+_)", RegexOptions.Compiled);
+        private readonly List<string> recentFiles = new List<string>();
+        private readonly string settingsPath = Path.Combine(AppContext.BaseDirectory, "NativeViewer.settings.xml");
         private string currentPath;
         private string rawContent;
         private string currentExtension;
         private string lastSearchQuery;
         private int searchStartIndex;
         private double fontSize = 14;
+        private int indentSize = DefaultIndentSize;
         private Encoding fileEncoding = new UTF8Encoding(false, true);
         private bool fileHasPreamble;
 
         public MainWindow()
         {
             InitializeComponent();
+            LoadSettings();
+            UpdateIndentMenuChecks();
+            RefreshRecentFilesMenu();
         }
 
         private void OpenButton_Click(object sender, RoutedEventArgs e)
@@ -157,11 +168,119 @@ namespace NativeViewer
             SetFontSize(14);
         }
 
+        private void IndentSizeMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            MenuItem menuItem = sender as MenuItem;
+            int selectedSize;
+            if (menuItem != null &&
+                int.TryParse(Convert.ToString(menuItem.Tag, CultureInfo.InvariantCulture), NumberStyles.None,
+                             CultureInfo.InvariantCulture, out selectedSize))
+            {
+                SetIndentSize(selectedSize);
+            }
+        }
+
+        private void CustomIndentSizeMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            Window dialog = new Window
+            {
+                Title = "Einrückung festlegen",
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ShowInTaskbar = false
+            };
+            StackPanel content = new StackPanel { Margin = new Thickness(16) };
+            content.Children.Add(new TextBlock
+            {
+                Text = "Leerzeichen pro Einrückungsebene (1–8):",
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+
+            TextBox sizeInput = new TextBox
+            {
+                Text = indentSize.ToString(CultureInfo.InvariantCulture),
+                MaxLength = 1,
+                MinWidth = 180
+            };
+            content.Children.Add(sizeInput);
+
+            StackPanel buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 12, 0, 0)
+            };
+            Button applyButton = new Button
+            {
+                Content = "Übernehmen",
+                MinWidth = 90,
+                Margin = new Thickness(0, 0, 8, 0),
+                IsDefault = true
+            };
+            Button cancelButton = new Button
+            {
+                Content = "Abbrechen",
+                MinWidth = 90,
+                IsCancel = true
+            };
+            int selectedSize = indentSize;
+            applyButton.Click += delegate
+            {
+                if (!int.TryParse(sizeInput.Text, NumberStyles.None, CultureInfo.InvariantCulture, out selectedSize) ||
+                    selectedSize < 1 || selectedSize > 8)
+                {
+                    MessageBox.Show(dialog, "Bitte eine ganze Zahl zwischen 1 und 8 eingeben.",
+                                    "Ungültige Einrückung", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    sizeInput.Focus();
+                    sizeInput.SelectAll();
+                    return;
+                }
+                dialog.DialogResult = true;
+            };
+            buttons.Children.Add(applyButton);
+            buttons.Children.Add(cancelButton);
+            content.Children.Add(buttons);
+            dialog.Content = content;
+            dialog.Loaded += delegate
+            {
+                sizeInput.Focus();
+                sizeInput.SelectAll();
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                SetIndentSize(selectedSize);
+            }
+        }
+
         private void SetFontSize(double size)
         {
             fontSize = Math.Max(8, Math.Min(32, size));
             TextView.FontSize = fontSize;
             RefreshView();
+        }
+
+        private void SetIndentSize(int size)
+        {
+            if (size < 1 || size > 8)
+            {
+                return;
+            }
+
+            indentSize = size;
+            UpdateIndentMenuChecks();
+            RefreshView();
+            StatusText.Text = "Einrückung: " + size.ToString(CultureInfo.InvariantCulture) + " Leerzeichen";
+            SaveSettings();
+        }
+
+        private void UpdateIndentMenuChecks()
+        {
+            Indent2MenuItem.IsChecked = indentSize == 2;
+            Indent4MenuItem.IsChecked = indentSize == 4;
+            Indent8MenuItem.IsChecked = indentSize == 8;
         }
 
         private void Window_DragOver(object sender, DragEventArgs e)
@@ -283,6 +402,154 @@ namespace NativeViewer
             FilePathText.Text = path;
             Title = Path.GetFileName(path) + " – NativeViewer";
             RefreshView();
+            AddRecentFile(path);
+        }
+
+        private void AddRecentFile(string path)
+        {
+            recentFiles.RemoveAll(existing => string.Equals(existing, path, StringComparison.OrdinalIgnoreCase));
+            recentFiles.Insert(0, path);
+            if (recentFiles.Count > MaximumRecentFiles)
+            {
+                recentFiles.RemoveRange(MaximumRecentFiles, recentFiles.Count - MaximumRecentFiles);
+            }
+            RefreshRecentFilesMenu();
+            SaveSettings();
+        }
+
+        private void RefreshRecentFilesMenu()
+        {
+            RecentFilesMenuItem.Items.Clear();
+            if (recentFiles.Count == 0)
+            {
+                RecentFilesMenuItem.Items.Add(new MenuItem
+                {
+                    Header = "Keine zuletzt geöffneten Dateien",
+                    IsEnabled = false
+                });
+                return;
+            }
+
+            foreach (string path in recentFiles)
+            {
+                MenuItem item = new MenuItem
+                {
+                    Header = Path.GetFileName(path),
+                    ToolTip = path,
+                    Tag = path
+                };
+                item.Click += RecentFileMenuItem_Click;
+                RecentFilesMenuItem.Items.Add(item);
+            }
+        }
+
+        private void RecentFileMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            MenuItem item = sender as MenuItem;
+            string path = item == null ? null : item.Tag as string;
+            if (!string.IsNullOrEmpty(path))
+            {
+                LoadFile(path);
+            }
+        }
+
+        private void LoadSettings()
+        {
+            if (!File.Exists(settingsPath))
+            {
+                return;
+            }
+
+            try
+            {
+                XDocument document = XDocument.Load(settingsPath);
+                XElement root = document.Root;
+                if (root == null || root.Name != "NativeViewerSettings")
+                {
+                    StatusText.Text = "Die lokale Einstellungsdatei hat ein ungültiges Format.";
+                    return;
+                }
+
+                XElement indentElement = root.Element("IndentSize");
+                if (indentElement != null)
+                {
+                    int savedIndentSize;
+                    if (int.TryParse(indentElement.Value, NumberStyles.None, CultureInfo.InvariantCulture, out savedIndentSize) &&
+                        savedIndentSize >= 1 && savedIndentSize <= 8)
+                    {
+                        indentSize = savedIndentSize;
+                    }
+                    else
+                    {
+                        StatusText.Text = "Die gespeicherte Einrückung ist ungültig; der Standardwert wird verwendet.";
+                    }
+                }
+
+                XElement recentElement = root.Element("RecentFiles");
+                if (recentElement != null)
+                {
+                    HashSet<string> uniquePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (XElement fileElement in recentElement.Elements("File"))
+                    {
+                        string path = fileElement.Value;
+                        if (!string.IsNullOrWhiteSpace(path) && uniquePaths.Add(path))
+                        {
+                            recentFiles.Add(path);
+                            if (recentFiles.Count == MaximumRecentFiles)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (IOException ex)
+            {
+                StatusText.Text = "Lokale Einstellungen konnten nicht gelesen werden: " + ex.Message;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                StatusText.Text = "Kein Zugriff auf die lokalen Einstellungen: " + ex.Message;
+            }
+            catch (SecurityException ex)
+            {
+                StatusText.Text = "Kein Zugriff auf die lokalen Einstellungen: " + ex.Message;
+            }
+            catch (XmlException ex)
+            {
+                StatusText.Text = "Die lokale Einstellungsdatei ist ungültig: " + ex.Message;
+            }
+        }
+
+        private void SaveSettings()
+        {
+            XElement root = new XElement("NativeViewerSettings");
+            if (indentSize != DefaultIndentSize)
+            {
+                root.Add(new XElement("IndentSize", indentSize.ToString(CultureInfo.InvariantCulture)));
+            }
+            root.Add(new XElement("RecentFiles", recentFiles.Select(path => new XElement("File", path))));
+
+            try
+            {
+                new XDocument(root).Save(settingsPath);
+            }
+            catch (IOException ex)
+            {
+                StatusText.Text = "Lokale Einstellungen konnten nicht gespeichert werden: " + ex.Message;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                StatusText.Text = "Kein Schreibzugriff auf den EXE-Ordner für lokale Einstellungen: " + ex.Message;
+            }
+            catch (SecurityException ex)
+            {
+                StatusText.Text = "Kein Schreibzugriff auf den EXE-Ordner für lokale Einstellungen: " + ex.Message;
+            }
+            catch (ArgumentException ex)
+            {
+                StatusText.Text = "Lokale Einstellungen konnten nicht gespeichert werden: " + ex.Message;
+            }
         }
 
         private void RefreshView()
@@ -323,7 +590,7 @@ namespace NativeViewer
             {
                 try
                 {
-                    displayText = FormatJson(rawContent);
+                    displayText = FormatJson(rawContent, indentSize);
                     status += " – formatiert";
                 }
                 catch (FormatException ex)
@@ -335,7 +602,7 @@ namespace NativeViewer
             {
                 try
                 {
-                    displayText = FormatXml(rawContent);
+                    displayText = FormatXml(rawContent, indentSize);
                     status += " – formatiert";
                 }
                 catch (XmlException ex)
@@ -507,7 +774,7 @@ namespace NativeViewer
             StatusText.Text = message;
         }
 
-        private static string FormatJson(string json)
+        private static string FormatJson(string json, int indentSize)
         {
             new JsonParser(json).Parse();
 
@@ -550,7 +817,7 @@ namespace NativeViewer
                     if (next < json.Length && json[next] != closing)
                     {
                         indent++;
-                        AppendNewLine(output, indent);
+                        AppendNewLine(output, indent, indentSize);
                     }
                 }
                 else if (current == '}' || current == ']')
@@ -560,14 +827,14 @@ namespace NativeViewer
                     if (previous >= 0 && json[previous] != opening)
                     {
                         indent--;
-                        AppendNewLine(output, indent);
+                        AppendNewLine(output, indent, indentSize);
                     }
                     output.Append(current);
                 }
                 else if (current == ',')
                 {
                     output.Append(current);
-                    AppendNewLine(output, indent);
+                    AppendNewLine(output, indent, indentSize);
                 }
                 else if (current == ':')
                 {
@@ -600,19 +867,19 @@ namespace NativeViewer
             return start;
         }
 
-        private static void AppendNewLine(StringBuilder output, int indent)
+        private static void AppendNewLine(StringBuilder output, int indent, int indentSize)
         {
             output.AppendLine();
-            output.Append(' ', Math.Max(0, indent) * 2);
+            output.Append(' ', Math.Max(0, indent) * indentSize);
         }
 
-        private static string FormatXml(string xml)
+        private static string FormatXml(string xml, int indentSize)
         {
             XDocument document = XDocument.Parse(xml);
             XmlWriterSettings settings = new XmlWriterSettings
             {
                 Indent = true,
-                IndentChars = "  ",
+                IndentChars = new string(' ', indentSize),
                 OmitXmlDeclaration = document.Declaration == null
             };
 
