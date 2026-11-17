@@ -3,4 +3,4 @@ bin/
 obj/
 *.user
 *.suo
-NativeViewer.settings.xml
+RhaView.settings.xml

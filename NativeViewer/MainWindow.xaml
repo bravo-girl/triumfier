@@ -1,7 +1,7 @@
 <Window x:Class="NativeViewer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="NativeViewer"
+        Title="RhaView"
         Width="1000"
         Height="700"
         MinWidth="600"
@@ -16,7 +16,7 @@
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_Datei">
                 <MenuItem Header="_Öffnen…" InputGestureText="Strg+O" Click="OpenButton_Click" />
-                <MenuItem x:Name="RecentFilesMenuItem" Header="Zuletzt geöffnet" />
+                <MenuItem x:Name="RecentFilesMenuItem" Header="Zuletzt geöffnet" SubmenuOpened="RecentFilesMenuItem_SubmenuOpened" />
                 <Separator />
                 <MenuItem Header="_Speichern" InputGestureText="Strg+S" Click="SaveMenuItem_Click" />
                 <MenuItem Header="Speichern _unter…" InputGestureText="Strg+Umschalt+S" Click="SaveAsMenuItem_Click" />
@@ -44,6 +44,11 @@
                     <Separator />
                     <MenuItem Header="Benutzerdefiniert…" Click="CustomIndentSizeMenuItem_Click" />
                 </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_Hilfe">
+                <MenuItem Header="_Befehlszeile…" Click="CommandLineHelpMenuItem_Click" />
+                <Separator />
+                <MenuItem Header="Über _RhaView" Click="AboutMenuItem_Click" />
             </MenuItem>
         </Menu>
         <Border DockPanel.Dock="Top" Background="White" BorderBrush="#FFE1E5EA" BorderThickness="0,0,0,1" Padding="16,12">

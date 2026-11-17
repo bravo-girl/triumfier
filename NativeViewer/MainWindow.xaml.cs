@@ -22,22 +22,27 @@ namespace NativeViewer
         private const int MaximumRecentFiles = 50;
         private static readonly Regex MarkdownInlinePattern =
             new Regex(@"(\*\*.+?\*\*|__.+?__|`[^`]+`|\*[^*]+\*|_[^_]+_)", RegexOptions.Compiled);
-        private readonly List<string> recentFiles = new List<string>();
-        private readonly string settingsPath = Path.Combine(AppContext.BaseDirectory, "NativeViewer.settings.xml");
+        private static readonly List<string> recentFiles = new List<string>();
+        private static readonly string settingsPath = Path.Combine(AppContext.BaseDirectory, "RhaView.settings.xml");
+        private static bool settingsLoaded;
         private string currentPath;
         private string rawContent;
         private string currentExtension;
         private string lastSearchQuery;
         private int searchStartIndex;
         private double fontSize = 14;
-        private int indentSize = DefaultIndentSize;
+        private static int indentSize = DefaultIndentSize;
         private Encoding fileEncoding = new UTF8Encoding(false, true);
         private bool fileHasPreamble;
 
         public MainWindow()
         {
             InitializeComponent();
-            LoadSettings();
+            if (!settingsLoaded)
+            {
+                settingsLoaded = true;
+                LoadSettings();
+            }
             UpdateIndentMenuChecks();
             RefreshRecentFilesMenu();
         }
@@ -47,12 +52,13 @@ namespace NativeViewer
             OpenFileDialog dialog = new OpenFileDialog
             {
                 Filter = "Unterstützte Dateien|*.json;*.xml;*.md;*.markdown;*.txt|Alle Dateien|*.*",
-                CheckFileExists = true
+                CheckFileExists = true,
+                Multiselect = true
             };
 
             if (dialog.ShowDialog(this) == true)
             {
-                LoadFile(dialog.FileName);
+                OpenFiles(dialog.FileNames);
             }
         }
 
@@ -69,6 +75,27 @@ namespace NativeViewer
         private void ExitMenuItem_Click(object sender, RoutedEventArgs e)
         {
             Close();
+        }
+
+        private void CommandLineHelpMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            MessageBox.Show(this,
+                "Aufruf: RhaView [Datei ...]\n\n" +
+                "Mehrere Dateien werden jeweils in einem eigenen Fenster geöffnet.\n" +
+                "Dateimuster mit * oder ? werden im angegebenen Ordner aufgelöst, zum Beispiel:\n" +
+                "RhaView .\\*.xml",
+                "RhaView – Hilfe", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void AboutMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            MessageBox.Show(this, "RhaView\n\nDateibetrachter für JSON, XML, Markdown und Text.",
+                            "Über RhaView", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void RecentFilesMenuItem_SubmenuOpened(object sender, RoutedEventArgs e)
+        {
+            RemoveMissingRecentFiles();
         }
 
         private void PrettyPrintMenuItem_Click(object sender, RoutedEventArgs e)
@@ -272,6 +299,15 @@ namespace NativeViewer
             indentSize = size;
             UpdateIndentMenuChecks();
             RefreshView();
+            foreach (Window openWindow in Application.Current.Windows)
+            {
+                MainWindow viewer = openWindow as MainWindow;
+                if (viewer != null && viewer != this)
+                {
+                    viewer.UpdateIndentMenuChecks();
+                    viewer.RefreshView();
+                }
+            }
             StatusText.Text = "Einrückung: " + size.ToString(CultureInfo.InvariantCulture) + " Leerzeichen";
             SaveSettings();
         }
@@ -294,8 +330,27 @@ namespace NativeViewer
             string[] paths = e.Data.GetData(DataFormats.FileDrop) as string[];
             if (paths != null && paths.Length > 0)
             {
-                LoadFile(paths[0]);
+                OpenFiles(paths);
             }
+        }
+
+        private void OpenFiles(string[] paths)
+        {
+            if (paths == null || paths.Length == 0)
+            {
+                return;
+            }
+
+            LoadFile(paths[0]);
+            for (int i = 1; i < paths.Length; i++)
+            {
+                App.OpenFileInNewWindow(paths[i]);
+            }
+        }
+
+        public void OpenFile(string path)
+        {
+            LoadFile(path);
         }
 
         private void LoadFile(string path)
@@ -304,6 +359,16 @@ namespace NativeViewer
             {
                 string content = ReadTextFile(path);
                 DisplayFile(path, content);
+            }
+            catch (FileNotFoundException ex)
+            {
+                RemoveRecentFile(path);
+                ShowError(path, "Datei wurde nicht gefunden: " + ex.Message);
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                RemoveRecentFile(path);
+                ShowError(path, "Der Dateiordner wurde nicht gefunden: " + ex.Message);
             }
             catch (IOException ex)
             {
@@ -400,7 +465,7 @@ namespace NativeViewer
             searchStartIndex = 0;
             FileNameText.Text = Path.GetFileName(path);
             FilePathText.Text = path;
-            Title = Path.GetFileName(path) + " – NativeViewer";
+            Title = Path.GetFileName(path) + " – RhaView";
             RefreshView();
             AddRecentFile(path);
         }
@@ -413,8 +478,45 @@ namespace NativeViewer
             {
                 recentFiles.RemoveRange(MaximumRecentFiles, recentFiles.Count - MaximumRecentFiles);
             }
-            RefreshRecentFilesMenu();
+            RefreshRecentFileMenus();
             SaveSettings();
+        }
+
+        private void RemoveMissingRecentFiles()
+        {
+            int removed = recentFiles.RemoveAll(path => !File.Exists(path));
+            if (removed == 0)
+            {
+                return;
+            }
+
+            RefreshRecentFileMenus();
+            SaveSettings();
+            StatusText.Text = removed == 1
+                ? "Eine nicht mehr vorhandene Datei wurde aus dem Verlauf entfernt."
+                : removed.ToString(CultureInfo.InvariantCulture) + " nicht mehr vorhandene Dateien wurden aus dem Verlauf entfernt.";
+        }
+
+        private void RemoveRecentFile(string path)
+        {
+            if (recentFiles.RemoveAll(existing => string.Equals(existing, path, StringComparison.OrdinalIgnoreCase)) > 0)
+            {
+                RefreshRecentFileMenus();
+                SaveSettings();
+            }
+        }
+
+        private void RefreshRecentFileMenus()
+        {
+            RefreshRecentFilesMenu();
+            foreach (Window openWindow in Application.Current.Windows)
+            {
+                MainWindow viewer = openWindow as MainWindow;
+                if (viewer != null && viewer != this)
+                {
+                    viewer.RefreshRecentFilesMenu();
+                }
+            }
         }
 
         private void RefreshRecentFilesMenu()
@@ -460,11 +562,12 @@ namespace NativeViewer
                 return;
             }
 
+            bool removedMissingFiles = false;
             try
             {
                 XDocument document = XDocument.Load(settingsPath);
                 XElement root = document.Root;
-                if (root == null || root.Name != "NativeViewerSettings")
+                if (root == null || root.Name != "RhaViewSettings")
                 {
                     StatusText.Text = "Die lokale Einstellungsdatei hat ein ungültiges Format.";
                     return;
@@ -494,10 +597,17 @@ namespace NativeViewer
                         string path = fileElement.Value;
                         if (!string.IsNullOrWhiteSpace(path) && uniquePaths.Add(path))
                         {
-                            recentFiles.Add(path);
-                            if (recentFiles.Count == MaximumRecentFiles)
+                            if (File.Exists(path))
                             {
-                                break;
+                                recentFiles.Add(path);
+                                if (recentFiles.Count == MaximumRecentFiles)
+                                {
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                removedMissingFiles = true;
                             }
                         }
                     }
@@ -519,11 +629,16 @@ namespace NativeViewer
             {
                 StatusText.Text = "Die lokale Einstellungsdatei ist ungültig: " + ex.Message;
             }
+
+            if (removedMissingFiles)
+            {
+                SaveSettings();
+            }
         }
 
         private void SaveSettings()
         {
-            XElement root = new XElement("NativeViewerSettings");
+            XElement root = new XElement("RhaViewSettings");
             if (indentSize != DefaultIndentSize)
             {
                 root.Add(new XElement("IndentSize", indentSize.ToString(CultureInfo.InvariantCulture)));
