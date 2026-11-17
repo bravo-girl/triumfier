@@ -16,6 +16,8 @@ Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 - Dateien über **Öffnen…** auswählen oder per Drag-and-drop laden
 - Mehrere Dateien gleichzeitig als Tabs in einem Fenster öffnen; Tabs fragen vor dem Schließen nach ungespeicherten Änderungen
 - Über **Datei → Neues Fenster** weitere Fenster öffnen
+- Fenstertitel mit vollständigem Dateipfad; geänderte Dateien sind mit `*` markiert
+- Plastisch hervorgehobene Schaltflächen in der Symbolleiste
 - Dateien als Kommandozeilenargumente übergeben; `*` und `?` im Dateinamen werden unterstützt, zum Beispiel `RhaView .\*.xml`
 - Liste der 50 zuletzt geöffneten Dateien, lokal neben der EXE gespeichert
 - JSON, XML, Markdown, HTML, CSS, CSV und Text bearbeiten und speichern

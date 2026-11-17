@@ -708,6 +708,7 @@ namespace NativeViewer
                 FileSizeText.Text = string.Empty;
                 PositionText.Text = string.Empty;
                 ModifiedText.Text = string.Empty;
+                UpdateWindowTitle();
                 return;
             }
 
@@ -725,9 +726,16 @@ namespace NativeViewer
                 PositionText.Text = "Vorschau";
             }
             ModifiedText.Text = isDirty ? "Geändert" : "Unverändert";
-            Title = (isDirty ? "* " : string.Empty) + Path.GetFileName(currentPath) + " – RhaView";
+            UpdateWindowTitle();
             SaveActiveDocumentState();
             UpdateActiveTabHeader();
+        }
+
+        private void UpdateWindowTitle()
+        {
+            Title = string.IsNullOrEmpty(currentPath)
+                ? "RhaView"
+                : Path.GetFullPath(currentPath) + (isDirty ? " *" : string.Empty);
         }
 
         private void ClockTimer_Tick(object sender, EventArgs e)
@@ -1089,10 +1097,8 @@ namespace NativeViewer
                 {
                     isRefreshingView = false;
                 }
-                FileNameText.Text = "Datei öffnen oder hier ablegen";
-                FilePathText.Text = "JSON, XML, Markdown, HTML, CSS, CSV und Text";
                 StatusText.Text = "Bereit";
-                Title = "RhaView";
+                UpdateWindowTitle();
                 UpdateStatusBar();
                 UpdateEditCommandState();
                 UpdatePrettyPrintButtons();
@@ -1118,9 +1124,7 @@ namespace NativeViewer
             TextView.HorizontalScrollBarVisibility = document.WordWrap
                 ? ScrollBarVisibility.Disabled
                 : ScrollBarVisibility.Auto;
-            FileNameText.Text = Path.GetFileName(currentPath);
-            FilePathText.Text = currentPath;
-            Title = Path.GetFileName(currentPath) + " – RhaView";
+            UpdateWindowTitle();
 
             isRefreshingView = true;
             try
@@ -1584,10 +1588,8 @@ namespace NativeViewer
                     MarkdownRenderedMenuItem.IsChecked = MarkdownRenderedMenuItem.IsEnabled;
                     CsvPreviewMenuItem.IsChecked = CsvPreviewMenuItem.IsEnabled;
                 }
-                FilePathText.Text = path;
-                FileNameText.Text = Path.GetFileName(path);
                 currentFileSize = new FileInfo(path).Length;
-                Title = Path.GetFileName(path) + " – RhaView";
+                UpdateWindowTitle();
                 RefreshView();
                 AddRecentFile(path);
                 StatusText.Text = "Gespeichert";
@@ -1754,9 +1756,7 @@ namespace NativeViewer
             StatusText.Text = message;
             if (activeDocument == null)
             {
-                FileNameText.Text = Path.GetFileName(path);
-                FilePathText.Text = path;
-                Title = "RhaView";
+                UpdateWindowTitle();
                 UpdateStatusBar();
             }
         }
