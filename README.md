@@ -9,6 +9,7 @@ Ein kleiner Windows-Desktop-Viewer für JSON-, XML-, Markdown- und TXT-Dateien.
 - Die Anwendung wird als einzelne, selbstenthaltende Windows-x64-EXE veröffentlicht
 
 Die EXE enthält die benötigte .NET-Desktop-Laufzeit. Derzeit ist das Ziel Windows x64; ARM64 wird nicht mit dieser Ausgabe abgedeckt.
+Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 
 ## Funktionen
 
@@ -18,12 +19,12 @@ Die EXE enthält die benötigte .NET-Desktop-Laufzeit. Derzeit ist das Ziel Wind
 - XML validieren und formatiert anzeigen
 - Markdown mit Überschriften, Listen, Codeblöcken und einfacher Inline-Formatierung darstellen
 - Markdown-Ansicht und Quelltext umschalten
-- Regex-Suche mit Weitersuchen und Groß-/Kleinschreibungsoption
+- Reguläre Suche mit Weitersuchen und Beachtung der Groß-/Kleinschreibung
 - Zeilenumbruch und Schriftgröße einstellen
 - TXT-Dateien unverändert lesen
 - Ungültiges JSON/XML mit verständlichem Status anzeigen und den Originaltext beibehalten
 
-JSON und XML werden standardmäßig formatiert angezeigt. **Speichern** schreibt die angezeigte Formatierung; bei Markdown wird der Quelltext gespeichert. Die Markdown-Darstellung unterstützt bewusst einen häufig genutzten Teilumfang und ist kein vollständiger CommonMark-Parser.
+JSON und XML werden standardmäßig formatiert angezeigt. **Speichern** schreibt die formatierte JSON-/XML-Ansicht; bei Markdown und Text bleibt der Quelltext unverändert. UTF-8-, UTF-16- und UTF-32-BOMs werden erkannt und beim Speichern erhalten. Dateien ohne BOM werden als striktes UTF-8 gelesen und bleiben BOM-los. Die Markdown-Darstellung unterstützt bewusst einen häufig genutzten Teilumfang und ist kein vollständiger CommonMark-Parser.
 
 ## Build
 

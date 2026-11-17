@@ -23,6 +23,8 @@ namespace NativeViewer
         private string lastSearchQuery;
         private int searchStartIndex;
         private double fontSize = 14;
+        private Encoding fileEncoding = new UTF8Encoding(false, true);
+        private bool fileHasPreamble;
 
         public MainWindow()
         {
@@ -78,6 +80,13 @@ namespace NativeViewer
 
         private void SearchMenuItem_Click(object sender, RoutedEventArgs e)
         {
+            if (SearchPanel.Visibility == Visibility.Visible)
+            {
+                SearchPanel.Visibility = Visibility.Collapsed;
+                TextView.Focus();
+                return;
+            }
+
             SearchPanel.Visibility = Visibility.Visible;
             SearchTextBox.Focus();
             SearchTextBox.SelectAll();
@@ -174,12 +183,7 @@ namespace NativeViewer
         {
             try
             {
-                string content;
-                using (StreamReader reader = new StreamReader(path, Encoding.UTF8, true))
-                {
-                    content = reader.ReadToEnd();
-                }
-
+                string content = ReadTextFile(path);
                 DisplayFile(path, content);
             }
             catch (IOException ex)
@@ -202,6 +206,68 @@ namespace NativeViewer
             {
                 ShowError(path, "Ungültiger Dateipfad: " + ex.Message);
             }
+        }
+
+        private string ReadTextFile(string path)
+        {
+            byte[] bytes = File.ReadAllBytes(path);
+            int preambleLength;
+            fileEncoding = DetectEncoding(bytes, out preambleLength, out fileHasPreamble);
+            return fileEncoding.GetString(bytes, preambleLength, bytes.Length - preambleLength);
+        }
+
+        private static Encoding DetectEncoding(byte[] bytes, out int preambleLength, out bool hasPreamble)
+        {
+            if (StartsWith(bytes, 0xFF, 0xFE, 0x00, 0x00))
+            {
+                preambleLength = 4;
+                hasPreamble = true;
+                return new UTF32Encoding(false, true, true);
+            }
+            if (StartsWith(bytes, 0x00, 0x00, 0xFE, 0xFF))
+            {
+                preambleLength = 4;
+                hasPreamble = true;
+                return new UTF32Encoding(true, true, true);
+            }
+            if (StartsWith(bytes, 0xEF, 0xBB, 0xBF))
+            {
+                preambleLength = 3;
+                hasPreamble = true;
+                return new UTF8Encoding(true, true);
+            }
+            if (StartsWith(bytes, 0xFE, 0xFF))
+            {
+                preambleLength = 2;
+                hasPreamble = true;
+                return new UnicodeEncoding(true, true, true);
+            }
+            if (StartsWith(bytes, 0xFF, 0xFE))
+            {
+                preambleLength = 2;
+                hasPreamble = true;
+                return new UnicodeEncoding(false, true, true);
+            }
+
+            preambleLength = 0;
+            hasPreamble = false;
+            return new UTF8Encoding(false, true);
+        }
+
+        private static bool StartsWith(byte[] bytes, params byte[] signature)
+        {
+            if (bytes.Length < signature.Length)
+            {
+                return false;
+            }
+            for (int i = 0; i < signature.Length; i++)
+            {
+                if (bytes[i] != signature[i])
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private void DisplayFile(string path, string content)
@@ -233,7 +299,7 @@ namespace NativeViewer
                     TextView.Visibility = Visibility.Collapsed;
                     MarkdownView.Visibility = Visibility.Visible;
                     MarkdownView.Document = RenderMarkdown(rawContent, fontSize);
-                    StatusText.Text = "Markdown gerendert";
+                    StatusText.Text = "Markdown dargestellt";
                 }
                 else
                 {
@@ -284,12 +350,11 @@ namespace NativeViewer
 
         private string GetSaveContent()
         {
-            if ((currentExtension == ".md" || currentExtension == ".markdown") &&
-                MarkdownRenderedMenuItem.IsChecked)
+            if (currentExtension != ".json" && currentExtension != ".xml")
             {
                 return rawContent;
             }
-            return TextView.Text;
+            return PrettyPrintMenuItem.IsChecked ? TextView.Text : rawContent;
         }
 
         private void SaveFile(bool saveAs)
@@ -322,7 +387,7 @@ namespace NativeViewer
 
             try
             {
-                File.WriteAllText(path, GetSaveContent(), new UTF8Encoding(false));
+                WriteTextFile(path, GetSaveContent());
                 currentPath = path;
                 FilePathText.Text = path;
                 FileNameText.Text = Path.GetFileName(path);
@@ -340,9 +405,27 @@ namespace NativeViewer
             {
                 StatusText.Text = "Speichern fehlgeschlagen: " + ex.Message;
             }
+            catch (EncoderFallbackException ex)
+            {
+                StatusText.Text = "Zeichen können mit der ursprünglichen Dateikodierung nicht gespeichert werden: " + ex.Message;
+            }
             catch (ArgumentException ex)
             {
                 StatusText.Text = "Ungültiger Dateipfad: " + ex.Message;
+            }
+        }
+
+        private void WriteTextFile(string path, string content)
+        {
+            byte[] contentBytes = fileEncoding.GetBytes(content);
+            byte[] preamble = fileHasPreamble ? fileEncoding.GetPreamble() : new byte[0];
+            using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                if (preamble.Length > 0)
+                {
+                    stream.Write(preamble, 0, preamble.Length);
+                }
+                stream.Write(contentBytes, 0, contentBytes.Length);
             }
         }
 
@@ -405,7 +488,7 @@ namespace NativeViewer
             }
             catch (RegexMatchTimeoutException)
             {
-                StatusText.Text = "Die Regex-Suche hat das Zeitlimit überschritten.";
+                StatusText.Text = "Die Suche mit regulärem Ausdruck hat das Zeitlimit überschritten.";
             }
         }
 
@@ -413,6 +496,8 @@ namespace NativeViewer
         {
             currentPath = null;
             rawContent = null;
+            fileEncoding = new UTF8Encoding(false, true);
+            fileHasPreamble = false;
             MarkdownRenderedMenuItem.IsEnabled = false;
             MarkdownView.Visibility = Visibility.Collapsed;
             TextView.Visibility = Visibility.Visible;
