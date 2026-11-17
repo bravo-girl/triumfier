@@ -20,6 +20,23 @@ namespace NativeViewer
     {
         private const int DefaultIndentSize = 2;
         private const int MaximumRecentFiles = 50;
+        private const string MitLicenseText =
+            "MIT License\n\n" +
+            "Copyright (c) 2026 RhaView 1.0\n\n" +
+            "Permission is hereby granted, free of charge, to any person obtaining a copy " +
+            "of this software and associated documentation files (the \"Software\"), to deal " +
+            "in the Software without restriction, including without limitation the rights " +
+            "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell " +
+            "copies of the Software, and to permit persons to whom the Software is " +
+            "furnished to do so, subject to the following conditions:\n\n" +
+            "The above copyright notice and this permission notice shall be included in all " +
+            "copies or substantial portions of the Software.\n\n" +
+            "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR " +
+            "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, " +
+            "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE " +
+            "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER " +
+            "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, " +
+            "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.";
         private static readonly Regex MarkdownInlinePattern =
             new Regex(@"(\*\*.+?\*\*|__.+?__|`[^`]+`|\*[^*]+\*|_[^_]+_)", RegexOptions.Compiled);
         private static readonly List<string> recentFiles = new List<string>();
@@ -31,6 +48,10 @@ namespace NativeViewer
         private string lastSearchQuery;
         private int searchStartIndex;
         private double fontSize = 14;
+        private long currentFileSize = -1;
+        private string savedEditorContent;
+        private bool isDirty;
+        private bool isRefreshingView;
         private static int indentSize = DefaultIndentSize;
         private Encoding fileEncoding = new UTF8Encoding(false, true);
         private bool fileHasPreamble;
@@ -89,8 +110,91 @@ namespace NativeViewer
 
         private void AboutMenuItem_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show(this, "RhaView\n\nDateibetrachter für JSON, XML, Markdown und Text.",
+            MessageBox.Show(this, "RhaView 1.0\nDateibetrachter für JSON, XML, Markdown und Text.\n\nCopyright (c) 2026 RhaView 1.0\nMIT-Lizenz",
                             "Über RhaView", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void LicenseMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            Window licenseWindow = new Window
+            {
+                Title = "RhaView – MIT-Lizenz",
+                Owner = this,
+                Width = 760,
+                Height = 560,
+                MinWidth = 500,
+                MinHeight = 350,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Content = new TextBox
+                {
+                    Text = MitLicenseText,
+                    IsReadOnly = true,
+                    AcceptsReturn = true,
+                    TextWrapping = TextWrapping.Wrap,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+                    Padding = new Thickness(12)
+                }
+            };
+            licenseWindow.ShowDialog();
+        }
+
+        private void KeyboardHelpMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            MessageBox.Show(this,
+                "Datei öffnen: Strg+O\nSpeichern: Strg+S\nSpeichern unter: Strg+Umschalt+S\n" +
+                "Rückgängig: Strg+Z\nWiederholen: Strg+Y\nSuche ein-/ausblenden: Strg+F\n" +
+                "Nächster Treffer: F3\nVorheriger Treffer: Umschalt+F3\n" +
+                "Ausschneiden/Kopieren/Einfügen/Alles auswählen: Strg+X / Strg+C / Strg+V / Strg+A",
+                "RhaView – Tastenkürzel", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void UndoMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            PrepareTextEditor();
+            if (TextView.CanUndo)
+            {
+                TextView.Undo();
+            }
+        }
+
+        private void RedoMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            PrepareTextEditor();
+            if (TextView.CanRedo)
+            {
+                TextView.Redo();
+            }
+        }
+
+        private void CutMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            PrepareTextEditor();
+            TextView.Cut();
+        }
+
+        private void CopyMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            PrepareTextEditor();
+            TextView.Copy();
+        }
+
+        private void PasteMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            PrepareTextEditor();
+            TextView.Paste();
+        }
+
+        private void SelectAllMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            PrepareTextEditor();
+            TextView.SelectAll();
+        }
+
+        private void PrepareTextEditor()
+        {
+            TextView.Focus();
         }
 
         private void RecentFilesMenuItem_SubmenuOpened(object sender, RoutedEventArgs e)
@@ -138,16 +242,27 @@ namespace NativeViewer
 
         private void FindNextButton_Click(object sender, RoutedEventArgs e)
         {
-            FindNext();
+            FindNext(false);
+        }
+
+        private void FindPreviousButton_Click(object sender, RoutedEventArgs e)
+        {
+            FindNext(true);
         }
 
         private void SearchTextBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             if (e.Key == System.Windows.Input.Key.Enter)
             {
-                FindNext();
+                FindNext(System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift));
                 e.Handled = true;
             }
+        }
+
+        private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            lastSearchQuery = null;
+            searchStartIndex = 0;
         }
 
         private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -164,6 +279,19 @@ namespace NativeViewer
             else if (KeyboardShortcut(e, System.Windows.Input.Key.F, false))
             {
                 SearchMenuItem_Click(sender, e);
+            }
+            else if (KeyboardShortcut(e, System.Windows.Input.Key.Z, false))
+            {
+                UndoMenuItem_Click(sender, e);
+            }
+            else if (KeyboardShortcut(e, System.Windows.Input.Key.Y, false))
+            {
+                RedoMenuItem_Click(sender, e);
+            }
+            else if (e.Key == System.Windows.Input.Key.F3 &&
+                     (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == 0)
+            {
+                FindNext(System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift));
             }
             else
             {
@@ -319,6 +447,114 @@ namespace NativeViewer
             Indent8MenuItem.IsChecked = indentSize == 8;
         }
 
+        private void TextView_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (isRefreshingView || currentPath == null)
+            {
+                return;
+            }
+
+            rawContent = TextView.Text;
+            isDirty = !string.Equals(TextView.Text, savedEditorContent, StringComparison.Ordinal);
+            if ((currentExtension == ".md" || currentExtension == ".markdown") &&
+                MarkdownRenderedMenuItem.IsChecked)
+            {
+                MarkdownView.Document = RenderMarkdown(rawContent, fontSize);
+            }
+            UpdateCurrentFileSize();
+            UpdateEditCommandState();
+            UpdateStatusBar();
+        }
+
+        private void TextView_SelectionChanged(object sender, RoutedEventArgs e)
+        {
+            if (!isRefreshingView)
+            {
+                UpdateStatusBar();
+                UpdateEditCommandState();
+            }
+        }
+
+        private void UpdateCurrentFileSize()
+        {
+            try
+            {
+                currentFileSize = fileEncoding.GetByteCount(TextView.Text) +
+                                  (fileHasPreamble ? fileEncoding.GetPreamble().LongLength : 0);
+            }
+            catch (EncoderFallbackException)
+            {
+                currentFileSize = -1;
+            }
+        }
+
+        private void UpdateStatusBar()
+        {
+            if (FileNameStatusText == null)
+            {
+                return;
+            }
+            if (currentPath == null)
+            {
+                FileNameStatusText.Text = string.Empty;
+                FileSizeText.Text = string.Empty;
+                PositionText.Text = string.Empty;
+                ModifiedText.Text = string.Empty;
+                return;
+            }
+
+            FileNameStatusText.Text = Path.GetFileName(currentPath);
+            FileSizeText.Text = FormatFileSize(currentFileSize);
+            if (TextView.Visibility == Visibility.Visible)
+            {
+                int line = TextView.GetLineIndexFromCharacterIndex(TextView.CaretIndex);
+                int lineStart = TextView.GetCharacterIndexFromLineIndex(Math.Max(0, line));
+                PositionText.Text = "Zeile " + (line + 1).ToString(CultureInfo.InvariantCulture) +
+                                    ", Spalte " + (TextView.CaretIndex - lineStart + 1).ToString(CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                PositionText.Text = "Vorschau";
+            }
+            ModifiedText.Text = isDirty ? "Geändert" : "Unverändert";
+            Title = (isDirty ? "* " : string.Empty) + Path.GetFileName(currentPath) + " – RhaView";
+        }
+
+        private static string FormatFileSize(long bytes)
+        {
+            if (bytes < 0)
+            {
+                return "Größe unbekannt";
+            }
+            if (bytes < 1024)
+            {
+                return "Größe " + bytes.ToString("N0", CultureInfo.CurrentCulture) + " B";
+            }
+
+            string[] units = { "KB", "MB", "GB", "TB" };
+            double size = bytes;
+            int unitIndex = -1;
+            do
+            {
+                size /= 1024;
+                unitIndex++;
+            }
+            while (size >= 1024 && unitIndex < units.Length - 1);
+            return "Größe " + size.ToString("N1", CultureInfo.CurrentCulture) + " " + units[unitIndex];
+        }
+
+        private void UpdateEditCommandState()
+        {
+            if (TextView == null || UndoMenuItem == null)
+            {
+                return;
+            }
+            bool hasFile = currentPath != null;
+            UndoMenuItem.IsEnabled = hasFile && TextView.CanUndo;
+            RedoMenuItem.IsEnabled = hasFile && TextView.CanRedo;
+            UndoButton.IsEnabled = hasFile && TextView.CanUndo;
+        }
+
         private void Window_DragOver(object sender, DragEventArgs e)
         {
             e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
@@ -397,7 +633,9 @@ namespace NativeViewer
             byte[] bytes = File.ReadAllBytes(path);
             int preambleLength;
             fileEncoding = DetectEncoding(bytes, out preambleLength, out fileHasPreamble);
-            return fileEncoding.GetString(bytes, preambleLength, bytes.Length - preambleLength);
+            string content = fileEncoding.GetString(bytes, preambleLength, bytes.Length - preambleLength);
+            currentFileSize = bytes.LongLength;
+            return content;
         }
 
         private static Encoding DetectEncoding(byte[] bytes, out int preambleLength, out bool hasPreamble)
@@ -458,6 +696,8 @@ namespace NativeViewer
         {
             currentPath = path;
             rawContent = content;
+            savedEditorContent = null;
+            isDirty = false;
             currentExtension = Path.GetExtension(path).ToLowerInvariant();
             MarkdownRenderedMenuItem.IsEnabled = currentExtension == ".md" || currentExtension == ".markdown";
             MarkdownRenderedMenuItem.IsChecked = MarkdownRenderedMenuItem.IsEnabled;
@@ -467,6 +707,8 @@ namespace NativeViewer
             FilePathText.Text = path;
             Title = Path.GetFileName(path) + " – RhaView";
             RefreshView();
+            savedEditorContent = TextView.Text;
+            UpdateStatusBar();
             AddRecentFile(path);
         }
 
@@ -674,69 +916,85 @@ namespace NativeViewer
                 return;
             }
 
-            if (currentExtension == ".md" || currentExtension == ".markdown")
+            bool wasDirty = isDirty;
+            isRefreshingView = true;
+            try
             {
-                if (MarkdownRenderedMenuItem.IsChecked)
+                TextView.FontSize = fontSize;
+                if (currentExtension == ".md" || currentExtension == ".markdown")
                 {
-                    TextView.Visibility = Visibility.Collapsed;
-                    MarkdownView.Visibility = Visibility.Visible;
-                    MarkdownView.Document = RenderMarkdown(rawContent, fontSize);
-                    StatusText.Text = "Markdown dargestellt";
+                    if (!string.Equals(TextView.Text, rawContent, StringComparison.Ordinal))
+                    {
+                        TextView.Text = rawContent;
+                    }
+                    if (MarkdownRenderedMenuItem.IsChecked)
+                    {
+                        Grid.SetColumnSpan(TextView, 1);
+                        TextView.Visibility = Visibility.Visible;
+                        MarkdownView.Visibility = Visibility.Visible;
+                        MarkdownView.Document = RenderMarkdown(rawContent, fontSize);
+                        StatusText.Text = "Markdown-Vorschau";
+                    }
+                    else
+                    {
+                        Grid.SetColumnSpan(TextView, 2);
+                        MarkdownView.Visibility = Visibility.Collapsed;
+                        TextView.Visibility = Visibility.Visible;
+                        StatusText.Text = "Markdown-Quelltext";
+                    }
+                    return;
                 }
-                else
+
+                MarkdownView.Visibility = Visibility.Collapsed;
+                TextView.Visibility = Visibility.Visible;
+                Grid.SetColumnSpan(TextView, 2);
+                string displayText = rawContent;
+                string status = currentExtension == ".json" ? "JSON" :
+                                currentExtension == ".xml" ? "XML" : "Textdatei";
+
+                if (PrettyPrintMenuItem.IsChecked && currentExtension == ".json")
                 {
-                    MarkdownView.Visibility = Visibility.Collapsed;
-                    TextView.Visibility = Visibility.Visible;
-                    TextView.Text = rawContent;
-                    TextView.FontSize = fontSize;
-                    StatusText.Text = "Markdown-Quelltext";
+                    try
+                    {
+                        displayText = FormatJson(rawContent, indentSize);
+                        status += " – formatiert";
+                    }
+                    catch (FormatException ex)
+                    {
+                        status = "Ungültiges JSON – Originaltext wird angezeigt: " + ex.Message;
+                    }
                 }
-                return;
+                else if (PrettyPrintMenuItem.IsChecked && currentExtension == ".xml")
+                {
+                    try
+                    {
+                        displayText = FormatXml(rawContent, indentSize);
+                        status += " – formatiert";
+                    }
+                    catch (XmlException ex)
+                    {
+                        status = "Ungültiges XML – Originaltext wird angezeigt: " + ex.Message;
+                    }
+                }
+
+                TextView.Text = displayText;
+                StatusText.Text = status;
             }
-
-            MarkdownView.Visibility = Visibility.Collapsed;
-            TextView.Visibility = Visibility.Visible;
-            TextView.FontSize = fontSize;
-            string displayText = rawContent;
-            string status = currentExtension == ".json" ? "JSON" :
-                            currentExtension == ".xml" ? "XML" : "Textdatei";
-
-            if (PrettyPrintMenuItem.IsChecked && currentExtension == ".json")
+            finally
             {
-                try
+                isRefreshingView = false;
+                if (!wasDirty)
                 {
-                    displayText = FormatJson(rawContent, indentSize);
-                    status += " – formatiert";
+                    savedEditorContent = TextView.Text;
                 }
-                catch (FormatException ex)
-                {
-                    status = "Ungültiges JSON – Originaltext wird angezeigt: " + ex.Message;
-                }
+                UpdateStatusBar();
+                UpdateEditCommandState();
             }
-            else if (PrettyPrintMenuItem.IsChecked && currentExtension == ".xml")
-            {
-                try
-                {
-                    displayText = FormatXml(rawContent, indentSize);
-                    status += " – formatiert";
-                }
-                catch (XmlException ex)
-                {
-                    status = "Ungültiges XML – Originaltext wird angezeigt: " + ex.Message;
-                }
-            }
-
-            TextView.Text = displayText;
-            StatusText.Text = status;
         }
 
         private string GetSaveContent()
         {
-            if (currentExtension != ".json" && currentExtension != ".xml")
-            {
-                return rawContent;
-            }
-            return PrettyPrintMenuItem.IsChecked ? TextView.Text : rawContent;
+            return TextView.Text;
         }
 
         private void SaveFile(bool saveAs)
@@ -753,7 +1011,8 @@ namespace NativeViewer
                 SaveFileDialog dialog = new SaveFileDialog
                 {
                     Filter = "Alle Dateien|*.*",
-                    FileName = Path.GetFileName(currentPath)
+                    FileName = Path.GetFileName(currentPath),
+                    InitialDirectory = currentPath == null ? AppContext.BaseDirectory : Path.GetDirectoryName(currentPath)
                 };
                 if (dialog.ShowDialog(this) != true)
                 {
@@ -761,19 +1020,43 @@ namespace NativeViewer
                 }
                 path = dialog.FileName;
             }
-            else if (MessageBox.Show(this, "Die Datei mit der aktuell angezeigten Formatierung überschreiben?",
-                                     "Speichern bestätigen", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
-            {
-                return;
-            }
 
             try
             {
-                WriteTextFile(path, GetSaveContent());
+                string content = GetSaveContent();
+                WriteTextFile(path, content);
+                rawContent = content;
+                savedEditorContent = content;
+                isDirty = false;
                 currentPath = path;
+                currentExtension = Path.GetExtension(path).ToLowerInvariant();
+                MarkdownRenderedMenuItem.IsEnabled = currentExtension == ".md" || currentExtension == ".markdown";
                 FilePathText.Text = path;
                 FileNameText.Text = Path.GetFileName(path);
+                currentFileSize = new FileInfo(path).Length;
+                Title = Path.GetFileName(path) + " – RhaView";
+                if (!MarkdownRenderedMenuItem.IsEnabled)
+                {
+                    MarkdownView.Visibility = Visibility.Collapsed;
+                    TextView.Visibility = Visibility.Visible;
+                    Grid.SetColumnSpan(TextView, 2);
+                }
+                else if (MarkdownRenderedMenuItem.IsChecked)
+                {
+                    TextView.Visibility = Visibility.Visible;
+                    Grid.SetColumnSpan(TextView, 1);
+                    MarkdownView.Visibility = Visibility.Visible;
+                    MarkdownView.Document = RenderMarkdown(content, fontSize);
+                }
+                else
+                {
+                    MarkdownView.Visibility = Visibility.Collapsed;
+                    TextView.Visibility = Visibility.Visible;
+                    Grid.SetColumnSpan(TextView, 2);
+                }
+                AddRecentFile(path);
                 StatusText.Text = "Gespeichert";
+                UpdateStatusBar();
             }
             catch (IOException ex)
             {
@@ -811,7 +1094,7 @@ namespace NativeViewer
             }
         }
 
-        private void FindNext()
+        private void FindNext(bool reverse)
         {
             if (rawContent == null)
             {
@@ -829,7 +1112,7 @@ namespace NativeViewer
             if (!string.Equals(query, lastSearchQuery, StringComparison.Ordinal))
             {
                 lastSearchQuery = query;
-                searchStartIndex = 0;
+                searchStartIndex = reverse ? searchTextLength() : 0;
             }
 
             string searchText = currentExtension == ".md" || currentExtension == ".markdown"
@@ -842,10 +1125,33 @@ namespace NativeViewer
                     : RegexOptions.IgnoreCase;
                 string pattern = RegexCheckBox.IsChecked == true ? query : Regex.Escape(query);
                 Regex searchRegex = new Regex(pattern, options, TimeSpan.FromSeconds(2));
-                Match match = searchRegex.Match(searchText, Math.Min(searchStartIndex, searchText.Length));
-                if (!match.Success && searchStartIndex > 0)
+                Match match = Match.Empty;
+                if (reverse)
                 {
-                    match = searchRegex.Match(searchText);
+                    MatchCollection matches = searchRegex.Matches(searchText);
+                    for (int i = 0; i < matches.Count; i++)
+                    {
+                        if (matches[i].Index < searchStartIndex)
+                        {
+                            match = matches[i];
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                    if (!match.Success && matches.Count > 0)
+                    {
+                        match = matches[matches.Count - 1];
+                    }
+                }
+                else
+                {
+                    match = searchRegex.Match(searchText, Math.Min(searchStartIndex, searchText.Length));
+                    if (!match.Success && searchStartIndex > 0)
+                    {
+                        match = searchRegex.Match(searchText);
+                    }
                 }
                 if (!match.Success)
                 {
@@ -853,15 +1159,12 @@ namespace NativeViewer
                     return;
                 }
 
-                if (currentExtension == ".md" || currentExtension == ".markdown")
-                {
-                    MarkdownRenderedMenuItem.IsChecked = false;
-                    RefreshView();
-                }
                 TextView.Focus();
                 TextView.Select(match.Index, match.Length);
                 TextView.ScrollToLine(TextView.GetLineIndexFromCharacterIndex(match.Index));
-                searchStartIndex = match.Index + Math.Max(1, match.Length);
+                searchStartIndex = reverse
+                    ? match.Index - 1
+                    : match.Index + Math.Max(1, match.Length);
                 StatusText.Text = "Treffer an Position " + (match.Index + 1).ToString(CultureInfo.InvariantCulture);
             }
             catch (ArgumentException ex)
@@ -874,19 +1177,32 @@ namespace NativeViewer
             }
         }
 
+        private int searchTextLength()
+        {
+            return (currentExtension == ".md" || currentExtension == ".markdown")
+                ? (rawContent == null ? 0 : rawContent.Length)
+                : TextView.Text.Length;
+        }
+
         private void ShowError(string path, string message)
         {
             currentPath = null;
             rawContent = null;
+            savedEditorContent = null;
+            isDirty = false;
+            currentFileSize = -1;
             fileEncoding = new UTF8Encoding(false, true);
             fileHasPreamble = false;
             MarkdownRenderedMenuItem.IsEnabled = false;
             MarkdownView.Visibility = Visibility.Collapsed;
             TextView.Visibility = Visibility.Visible;
+            Grid.SetColumnSpan(TextView, 2);
             TextView.Text = message;
             FileNameText.Text = Path.GetFileName(path);
             FilePathText.Text = path;
             StatusText.Text = message;
+            UpdateStatusBar();
+            UpdateEditCommandState();
         }
 
         private static string FormatJson(string json, int indentSize)

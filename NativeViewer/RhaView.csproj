@@ -5,7 +5,10 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>RhaView</AssemblyName>
     <RootNamespace>NativeViewer</RootNamespace>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Version>1.0.0</Version>
+    <AssemblyTitle>RhaView</AssemblyTitle>
+    <Product>RhaView</Product>
+    <Copyright>Copyright (c) 2026 RhaView 1.0</Copyright>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>

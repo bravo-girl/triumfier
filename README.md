@@ -17,7 +17,12 @@ Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 - Mehrere Dateien gleichzeitig in eigenen Fenstern öffnen
 - Dateien als Kommandozeilenargumente übergeben; `*` und `?` im Dateinamen werden unterstützt, zum Beispiel `RhaView .\*.xml`
 - Liste der 50 zuletzt geöffneten Dateien, lokal neben der EXE gespeichert
-- Datei speichern oder **Speichern unter…**; beim Überschreiben wird nachgefragt
+- JSON, XML, Markdown und Text bearbeiten und speichern
+- Markdown-Quelltext mit Live-Vorschau bearbeiten
+- Rückgängig/Wiederholen, Weitersuchen und Treffer markieren
+- Statusleiste mit Dateiname, Größe, Zeile/Spalte und Änderungsstatus
+- Gängige Tastenkürzel: Strg+O, Strg+S, Strg+Umschalt+S, Strg+Z, Strg+Y, Strg+F, F3 und Umschalt+F3
+- Datei speichern oder **Speichern unter…**
 - JSON validieren und einrücken
 - XML validieren und formatiert anzeigen
 - Markdown mit Überschriften, Listen, Codeblöcken und einfacher Inline-Formatierung darstellen
@@ -25,13 +30,17 @@ Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 - Reguläre Suche mit Weitersuchen und Beachtung der Groß-/Kleinschreibung
 - Zeilenumbruch und Schriftgröße einstellen
 - Einrückung für JSON und XML auf 1 bis 8 Leerzeichen einstellen
-- Deutsches Hilfemenü mit Kommandozeilenhilfe und Programminformation
+- Deutsches Hilfemenü mit Kommandozeilenhilfe, Tastenkürzeln, Programminformation und Lizenz
 - TXT-Dateien unverändert lesen
 - Ungültiges JSON/XML mit verständlichem Status anzeigen und den Originaltext beibehalten
 
 JSON und XML werden standardmäßig formatiert angezeigt. **Speichern** schreibt die formatierte JSON-/XML-Ansicht; bei Markdown und Text bleibt der Quelltext unverändert. UTF-8-, UTF-16- und UTF-32-BOMs werden erkannt und beim Speichern erhalten. Dateien ohne BOM werden als striktes UTF-8 gelesen und bleiben BOM-los. Die Markdown-Darstellung unterstützt bewusst einen häufig genutzten Teilumfang und ist kein vollständiger CommonMark-Parser.
 
 Die letzten Dateien und eine abweichende Einrückung werden in `RhaView.settings.xml` im EXE-Ordner gespeichert. Die Einrückung ist standardmäßig 2 Leerzeichen; dieser Wert wird nur dann in der Einstellungsdatei abgelegt, wenn er geändert wurde. Zum Schreiben der lokalen Einstellungen braucht die Anwendung Schreibrechte im EXE-Ordner.
+
+## Lizenz
+
+RhaView 1.0 steht unter der MIT-Lizenz. Private und kommerzielle Nutzung ist erlaubt; die Lizenz verlangt keine Quellcode-Veröffentlichung. Das bestehende GitHub-Repository bleibt wie gewünscht öffentlich und enthält den Quellcode. Der Lizenztext ist in der Anwendung unter **Hilfe → Lizenz** verfügbar.
 
 ## Build
 

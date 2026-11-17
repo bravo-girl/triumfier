@@ -28,6 +28,16 @@
                 <MenuItem x:Name="MarkdownRenderedMenuItem" Header="Markdown-Darstellung" IsCheckable="True" IsChecked="True" IsEnabled="False" Click="MarkdownRenderedMenuItem_Click" />
                 <MenuItem x:Name="WordWrapMenuItem" Header="Zeilenumbruch" IsCheckable="True" Click="WordWrapMenuItem_Click" />
             </MenuItem>
+            <MenuItem Header="_Bearbeiten">
+                <MenuItem x:Name="UndoMenuItem" Header="_Rückgängig" InputGestureText="Strg+Z" Click="UndoMenuItem_Click" IsEnabled="False" />
+                <MenuItem x:Name="RedoMenuItem" Header="_Wiederholen" InputGestureText="Strg+Y" Click="RedoMenuItem_Click" IsEnabled="False" />
+                <Separator />
+                <MenuItem Header="A_usschneiden" InputGestureText="Strg+X" Click="CutMenuItem_Click" />
+                <MenuItem Header="_Kopieren" InputGestureText="Strg+C" Click="CopyMenuItem_Click" />
+                <MenuItem Header="_Einfügen" InputGestureText="Strg+V" Click="PasteMenuItem_Click" />
+                <Separator />
+                <MenuItem Header="Alles auswählen" InputGestureText="Strg+A" Click="SelectAllMenuItem_Click" />
+            </MenuItem>
             <MenuItem Header="_Suche">
                 <MenuItem Header="Suche ein-/ausblenden…" InputGestureText="Strg+F" Click="SearchMenuItem_Click" />
             </MenuItem>
@@ -47,13 +57,19 @@
             </MenuItem>
             <MenuItem Header="_Hilfe">
                 <MenuItem Header="_Befehlszeile…" Click="CommandLineHelpMenuItem_Click" />
+                <MenuItem Header="Tastenkürzel" Click="KeyboardHelpMenuItem_Click" />
                 <Separator />
                 <MenuItem Header="Über _RhaView" Click="AboutMenuItem_Click" />
+                <MenuItem Header="_Lizenz" Click="LicenseMenuItem_Click" />
             </MenuItem>
         </Menu>
         <Border DockPanel.Dock="Top" Background="White" BorderBrush="#FFE1E5EA" BorderThickness="0,0,0,1" Padding="16,12">
             <DockPanel LastChildFill="True">
-                <Button DockPanel.Dock="Right" Content="Öffnen…" Padding="16,7" Click="OpenButton_Click" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button x:Name="UndoButton" Content="Rückgängig" ToolTip="Letzte Änderung rückgängig machen (Strg+Z)" Padding="10,7" Margin="4,0" Click="UndoMenuItem_Click" IsEnabled="False" />
+                    <Button Content="Speichern" ToolTip="Datei speichern (Strg+S)" Padding="10,7" Margin="4,0" Click="SaveMenuItem_Click" />
+                    <Button Content="Öffnen…" Padding="10,7" Margin="4,0" Click="OpenButton_Click" />
+                </StackPanel>
                 <StackPanel>
                     <TextBlock x:Name="FileNameText" Text="Datei öffnen oder hier ablegen" FontSize="16" FontWeight="SemiBold" />
                     <TextBlock x:Name="FilePathText" Margin="0,3,0,0" Foreground="#FF68717D" Text="Unterstützt JSON, XML, Markdown und Text" />
@@ -61,7 +77,15 @@
             </DockPanel>
         </Border>
         <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#FFE1E5EA" BorderThickness="0,1,0,0" Padding="12,7">
-            <TextBlock x:Name="StatusText" Foreground="#FF68717D" Text="Bereit" />
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <TextBlock x:Name="FileNameStatusText" Foreground="#FF35404B" Margin="8,0" />
+                    <TextBlock x:Name="FileSizeText" Foreground="#FF68717D" Margin="8,0" />
+                    <TextBlock x:Name="PositionText" Foreground="#FF68717D" Margin="8,0" />
+                    <TextBlock x:Name="ModifiedText" Foreground="#FF35404B" Margin="8,0" />
+                </StackPanel>
+                <TextBlock x:Name="StatusText" Foreground="#FF68717D" Text="Bereit" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
         </Border>
         <Grid Margin="12">
             <Grid.RowDefinitions>
@@ -71,6 +95,7 @@
             <DockPanel x:Name="SearchPanel" Grid.Row="0" Margin="0,0,0,8" Visibility="Collapsed">
                 <Button DockPanel.Dock="Right" Content="Schließen" Margin="8,0,0,0" Padding="10,5" Click="CloseSearchButton_Click" />
                 <Button DockPanel.Dock="Right" Content="Weitersuchen" Padding="10,5" Click="FindNextButton_Click" />
+                <Button DockPanel.Dock="Right" Content="Vorheriger Treffer" Padding="10,5" Click="FindPreviousButton_Click" />
                 <CheckBox x:Name="RegexCheckBox" DockPanel.Dock="Right" Content="Regulärer Ausdruck" VerticalAlignment="Center" Margin="12,0" />
                 <CheckBox x:Name="MatchCaseCheckBox" DockPanel.Dock="Right" Content="Groß-/Kleinschreibung beachten" VerticalAlignment="Center" Margin="12,0" />
                 <TextBox x:Name="SearchTextBox"
@@ -78,14 +103,22 @@
                          Padding="7,5"
                          VerticalContentAlignment="Center"
                          ToolTip="Suchtext eingeben"
+                         TextChanged="SearchTextBox_TextChanged"
                          KeyDown="SearchTextBox_KeyDown" />
             </DockPanel>
-            <Grid Grid.Row="1">
+            <Grid x:Name="ViewGrid" Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
                 <TextBox x:Name="TextView"
+                         Grid.Column="0"
+                         Grid.ColumnSpan="2"
                          Visibility="Visible"
-                         IsReadOnly="True"
+                         IsReadOnly="False"
                          AcceptsReturn="True"
                          AcceptsTab="True"
+                         UndoLimit="500"
                          TextWrapping="NoWrap"
                          VerticalScrollBarVisibility="Auto"
                          HorizontalScrollBarVisibility="Auto"
@@ -93,8 +126,13 @@
                          FontSize="14"
                          Padding="12"
                          BorderBrush="#FFE1E5EA"
-                         Background="White" />
+                         Background="White"
+                         SelectionBrush="#FFFFD54F"
+                         SelectionOpacity="0.85"
+                         TextChanged="TextView_TextChanged"
+                         SelectionChanged="TextView_SelectionChanged" />
                 <FlowDocumentScrollViewer x:Name="MarkdownView"
+                                          Grid.Column="1"
                                           Visibility="Collapsed"
                                           VerticalScrollBarVisibility="Auto"
                                           Padding="16"
