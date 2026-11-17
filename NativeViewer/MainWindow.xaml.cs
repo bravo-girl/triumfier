@@ -1,6 +1,7 @@
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Data;
 using System.Globalization;
 using System.IO;
@@ -56,6 +57,8 @@ namespace NativeViewer
         private static readonly List<string> recentFiles = new List<string>();
         private static readonly string settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "RhaView.settings.xml");
         private static bool settingsLoaded;
+        private DocumentTabState activeDocument;
+        private bool isChangingTabs;
         private string currentPath;
         private string rawContent;
         private string currentExtension;
@@ -70,6 +73,30 @@ namespace NativeViewer
         private static int indentSize = DefaultIndentSize;
         private Encoding fileEncoding = new UTF8Encoding(false, true);
         private bool fileHasPreamble;
+
+        private sealed class DocumentTabState
+        {
+            public TabItem Tab;
+            public TextBlock HeaderText;
+            public string Path;
+            public string RawContent;
+            public string Extension;
+            public string EditorContent;
+            public string SavedEditorContent;
+            public string SearchQuery;
+            public string LastSearchQuery;
+            public int SearchStartIndex;
+            public int SelectionStart;
+            public int SelectionLength;
+            public Encoding Encoding;
+            public bool HasPreamble;
+            public bool IsDirty;
+            public bool MarkdownPreview;
+            public bool CsvPreview;
+            public bool PrettyPrint;
+            public bool WordWrap;
+            public long FileSize;
+        }
 
         public MainWindow()
         {
@@ -115,11 +142,53 @@ namespace NativeViewer
             Close();
         }
 
+        private void Window_Closing(object sender, CancelEventArgs e)
+        {
+            SaveActiveDocumentState();
+            foreach (TabItem tab in DocumentTabs.Items)
+            {
+                DocumentTabState document = tab.Tag as DocumentTabState;
+                if (document == null || !document.IsDirty)
+                {
+                    continue;
+                }
+
+                if (DocumentTabs.SelectedItem != tab)
+                {
+                    DocumentTabs.SelectedItem = tab;
+                }
+                SaveActiveDocumentState();
+                MessageBoxResult result = MessageBox.Show(this,
+                    "Änderungen an „" + Path.GetFileName(document.Path) + "“ speichern?",
+                    "RhaView – Beenden", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                if (result == MessageBoxResult.Cancel)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+                if (result == MessageBoxResult.Yes)
+                {
+                    SaveFile(false);
+                    if (isDirty)
+                    {
+                        e.Cancel = true;
+                        return;
+                    }
+                }
+            }
+        }
+
+        private void NewWindowMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            App.OpenFileInNewWindow(null);
+        }
+
         private void CommandLineHelpMenuItem_Click(object sender, RoutedEventArgs e)
         {
             MessageBox.Show(this,
                 "Aufruf: RhaView [Datei ...]\n\n" +
-                "Mehrere Dateien werden jeweils in einem eigenen Fenster geöffnet.\n" +
+                "Mehrere Dateien werden als Tabs in einem Fenster geöffnet.\n" +
+                "Über Datei → Neues Fenster können separate Fenster geöffnet werden.\n" +
                 "Dateimuster mit * oder ? werden im angegebenen Ordner aufgelöst, zum Beispiel:\n" +
                 "RhaView .\\*.xml",
                 "RhaView – Hilfe", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -313,7 +382,11 @@ namespace NativeViewer
         {
             System.Windows.Input.ModifierKeys modifiers = System.Windows.Input.Keyboard.Modifiers;
             bool noModifiers = modifiers == System.Windows.Input.ModifierKeys.None;
-            if ((noModifiers && e.Key == System.Windows.Input.Key.F4) ||
+            if (KeyboardShortcut(e, System.Windows.Input.Key.N, false))
+            {
+                NewWindowMenuItem_Click(sender, e);
+            }
+            else if ((noModifiers && e.Key == System.Windows.Input.Key.F4) ||
                 KeyboardShortcut(e, System.Windows.Input.Key.O, false))
             {
                 OpenButton_Click(sender, e);
@@ -606,6 +679,8 @@ namespace NativeViewer
             }
             ModifiedText.Text = isDirty ? "Geändert" : "Unverändert";
             Title = (isDirty ? "* " : string.Empty) + Path.GetFileName(currentPath) + " – RhaView";
+            SaveActiveDocumentState();
+            UpdateActiveTabHeader();
         }
 
         private static string FormatFileSize(long bytes)
@@ -658,17 +733,16 @@ namespace NativeViewer
             }
         }
 
-        private void OpenFiles(string[] paths)
+        public void OpenFiles(IEnumerable<string> paths)
         {
-            if (paths == null || paths.Length == 0)
+            if (paths == null)
             {
                 return;
             }
 
-            LoadFile(paths[0]);
-            for (int i = 1; i < paths.Length; i++)
+            foreach (string path in paths)
             {
-                App.OpenFileInNewWindow(paths[i]);
+                LoadFile(path);
             }
         }
 
@@ -681,8 +755,23 @@ namespace NativeViewer
         {
             try
             {
-                string content = ReadTextFile(path);
-                DisplayFile(path, content);
+                string fullPath = Path.GetFullPath(path);
+                foreach (TabItem item in DocumentTabs.Items)
+                {
+                    DocumentTabState openDocument = item.Tag as DocumentTabState;
+                    if (openDocument != null &&
+                        string.Equals(openDocument.Path, fullPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        DocumentTabs.SelectedItem = item;
+                        return;
+                    }
+                }
+
+                Encoding encoding;
+                bool hasPreamble;
+                long fileSize;
+                string content = ReadTextFile(fullPath, out encoding, out hasPreamble, out fileSize);
+                DisplayFile(fullPath, content, encoding, hasPreamble, fileSize);
             }
             catch (FileNotFoundException ex)
             {
@@ -716,14 +805,13 @@ namespace NativeViewer
             }
         }
 
-        private string ReadTextFile(string path)
+        private string ReadTextFile(string path, out Encoding encoding, out bool hasPreamble, out long fileSize)
         {
             byte[] bytes = File.ReadAllBytes(path);
             int preambleLength;
-            fileEncoding = DetectEncoding(bytes, out preambleLength, out fileHasPreamble);
-            string content = fileEncoding.GetString(bytes, preambleLength, bytes.Length - preambleLength);
-            currentFileSize = bytes.LongLength;
-            return content;
+            encoding = DetectEncoding(bytes, out preambleLength, out hasPreamble);
+            fileSize = bytes.LongLength;
+            return encoding.GetString(bytes, preambleLength, bytes.Length - preambleLength);
         }
 
         private static Encoding DetectEncoding(byte[] bytes, out int preambleLength, out bool hasPreamble)
@@ -780,27 +868,297 @@ namespace NativeViewer
             return true;
         }
 
-        private void DisplayFile(string path, string content)
+        private void DisplayFile(string path, string content, Encoding encoding, bool hasPreamble, long fileSize)
         {
             csvPreviewTimer.Stop();
-            currentPath = path;
-            rawContent = content;
-            savedEditorContent = null;
-            isDirty = false;
-            currentExtension = Path.GetExtension(path).ToLowerInvariant();
-            MarkdownRenderedMenuItem.IsEnabled = currentExtension == ".md" || currentExtension == ".markdown";
-            MarkdownRenderedMenuItem.IsChecked = MarkdownRenderedMenuItem.IsEnabled;
-            CsvPreviewMenuItem.IsEnabled = currentExtension == ".csv";
-            CsvPreviewMenuItem.IsChecked = CsvPreviewMenuItem.IsEnabled;
-            lastSearchQuery = null;
-            searchStartIndex = 0;
-            FileNameText.Text = Path.GetFileName(path);
-            FilePathText.Text = path;
-            Title = Path.GetFileName(path) + " – RhaView";
+            SaveActiveDocumentState();
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+            DocumentTabState document = new DocumentTabState
+            {
+                Path = path,
+                RawContent = content,
+                Extension = extension,
+                EditorContent = content,
+                Encoding = encoding,
+                HasPreamble = hasPreamble,
+                FileSize = fileSize,
+                MarkdownPreview = extension == ".md" || extension == ".markdown",
+                CsvPreview = extension == ".csv",
+                PrettyPrint = PrettyPrintMenuItem.IsChecked,
+                WordWrap = WordWrapMenuItem.IsChecked
+            };
+            TabItem tab = CreateDocumentTab(document);
+            document.Tab = tab;
+            isChangingTabs = true;
+            DocumentTabs.Items.Add(tab);
+            DocumentTabs.SelectedItem = tab;
+            isChangingTabs = false;
+            ActivateDocument(document);
             RefreshView();
             savedEditorContent = TextView.Text;
-            UpdateStatusBar();
+            isDirty = false;
+            ClearEditorUndoHistory();
+            SaveActiveDocumentState();
+            UpdateTabHeader(document);
             AddRecentFile(path);
+        }
+
+        private TabItem CreateDocumentTab(DocumentTabState document)
+        {
+            TextBlock label = new TextBlock
+            {
+                Text = Path.GetFileName(document.Path),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Button closeButton = new Button
+            {
+                Content = "x",
+                Width = 18,
+                Height = 18,
+                Padding = new Thickness(0),
+                Margin = new Thickness(6, 0, 0, 0),
+                ToolTip = "Tab schließen"
+            };
+            StackPanel header = new StackPanel { Orientation = Orientation.Horizontal };
+            header.Children.Add(label);
+            header.Children.Add(closeButton);
+            TabItem tab = new TabItem
+            {
+                Header = header,
+                Tag = document,
+                ToolTip = document.Path
+            };
+            document.HeaderText = label;
+            closeButton.Tag = tab;
+            closeButton.Click += DocumentTabCloseButton_Click;
+            return tab;
+        }
+
+        private void DocumentTabCloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            Button closeButton = sender as Button;
+            TabItem tab = closeButton == null ? null : closeButton.Tag as TabItem;
+            DocumentTabState document = tab == null ? null : tab.Tag as DocumentTabState;
+            if (document == null)
+            {
+                return;
+            }
+
+            if (DocumentTabs.SelectedItem != tab)
+            {
+                DocumentTabs.SelectedItem = tab;
+            }
+            SaveActiveDocumentState();
+            if (document.IsDirty)
+            {
+                MessageBoxResult result = MessageBox.Show(this,
+                    "Änderungen an „" + Path.GetFileName(document.Path) + "“ speichern?",
+                    "RhaView – Tab schließen", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                if (result == MessageBoxResult.Cancel)
+                {
+                    return;
+                }
+                if (result == MessageBoxResult.Yes)
+                {
+                    SaveFile(false);
+                    if (isDirty)
+                    {
+                        return;
+                    }
+                }
+            }
+
+            DocumentTabs.Items.Remove(tab);
+            TabItem selectedTab = DocumentTabs.SelectedItem as TabItem;
+            DocumentTabState selectedDocument = selectedTab == null ? null : selectedTab.Tag as DocumentTabState;
+            if (selectedDocument != activeDocument)
+            {
+                ActivateDocument(selectedDocument);
+            }
+        }
+
+        private void DocumentTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (isChangingTabs)
+            {
+                return;
+            }
+            TabItem tab = DocumentTabs.SelectedItem as TabItem;
+            DocumentTabState document = tab == null ? null : tab.Tag as DocumentTabState;
+            if (document != activeDocument)
+            {
+                ActivateDocument(document);
+            }
+        }
+
+        private void ActivateDocument(DocumentTabState document)
+        {
+            SaveActiveDocumentState();
+            activeDocument = document;
+            if (document == null)
+            {
+                currentPath = null;
+                rawContent = null;
+                currentExtension = null;
+                lastSearchQuery = null;
+                searchStartIndex = 0;
+                currentFileSize = -1;
+                savedEditorContent = null;
+                isDirty = false;
+                fileEncoding = new UTF8Encoding(false, true);
+                fileHasPreamble = false;
+                MarkdownRenderedMenuItem.IsEnabled = false;
+                MarkdownRenderedMenuItem.IsChecked = false;
+                CsvPreviewMenuItem.IsEnabled = false;
+                CsvPreviewMenuItem.IsChecked = false;
+                TextView.IsReadOnly = true;
+                isRefreshingView = true;
+                try
+                {
+                    TextView.Text = string.Empty;
+                    ClearEditorUndoHistory();
+                    SearchTextBox.Text = string.Empty;
+                    MarkdownView.Visibility = Visibility.Collapsed;
+                    CsvView.Visibility = Visibility.Collapsed;
+                    CsvView.ItemsSource = null;
+                    CsvView.Columns.Clear();
+                    TextView.Visibility = Visibility.Visible;
+                    Grid.SetColumnSpan(TextView, 2);
+                }
+                finally
+                {
+                    isRefreshingView = false;
+                }
+                FileNameText.Text = "Datei öffnen oder hier ablegen";
+                FilePathText.Text = "JSON, XML, Markdown, HTML, CSS, CSV und Text";
+                StatusText.Text = "Bereit";
+                Title = "RhaView";
+                UpdateStatusBar();
+                UpdateEditCommandState();
+                UpdatePrettyPrintButtons();
+                return;
+            }
+
+            currentPath = document.Path;
+            rawContent = document.RawContent;
+            currentExtension = document.Extension;
+            savedEditorContent = document.SavedEditorContent;
+            isDirty = document.IsDirty;
+            currentFileSize = document.FileSize;
+            fileEncoding = document.Encoding;
+            fileHasPreamble = document.HasPreamble;
+            TextView.IsReadOnly = false;
+            MarkdownRenderedMenuItem.IsEnabled = currentExtension == ".md" || currentExtension == ".markdown";
+            MarkdownRenderedMenuItem.IsChecked = document.MarkdownPreview;
+            CsvPreviewMenuItem.IsEnabled = currentExtension == ".csv";
+            CsvPreviewMenuItem.IsChecked = document.CsvPreview;
+            PrettyPrintMenuItem.IsChecked = document.PrettyPrint;
+            WordWrapMenuItem.IsChecked = document.WordWrap;
+            TextView.TextWrapping = document.WordWrap ? TextWrapping.Wrap : TextWrapping.NoWrap;
+            TextView.HorizontalScrollBarVisibility = document.WordWrap
+                ? ScrollBarVisibility.Disabled
+                : ScrollBarVisibility.Auto;
+            FileNameText.Text = Path.GetFileName(currentPath);
+            FilePathText.Text = currentPath;
+            Title = Path.GetFileName(currentPath) + " – RhaView";
+
+            isRefreshingView = true;
+            try
+            {
+                TextView.Text = document.EditorContent ?? document.RawContent ?? string.Empty;
+                ClearEditorUndoHistory();
+                int selectionStart = Math.Max(0, Math.Min(document.SelectionStart, TextView.Text.Length));
+                int selectionLength = Math.Max(0, Math.Min(document.SelectionLength, TextView.Text.Length - selectionStart));
+                TextView.Select(selectionStart, selectionLength);
+                MarkdownView.Visibility = Visibility.Collapsed;
+                CsvView.Visibility = Visibility.Collapsed;
+                TextView.Visibility = Visibility.Visible;
+                Grid.SetColumnSpan(TextView, 2);
+                if (MarkdownRenderedMenuItem.IsEnabled && MarkdownRenderedMenuItem.IsChecked)
+                {
+                    Grid.SetColumnSpan(TextView, 1);
+                    MarkdownView.Visibility = Visibility.Visible;
+                    MarkdownView.Document = RenderMarkdown(rawContent, fontSize);
+                    StatusText.Text = "Markdown-Vorschau";
+                }
+                else if (CsvPreviewMenuItem.IsEnabled && CsvPreviewMenuItem.IsChecked)
+                {
+                    Grid.SetColumnSpan(TextView, 1);
+                    CsvView.Visibility = Visibility.Visible;
+                    RefreshCsvPreview(rawContent);
+                }
+                else if (currentExtension == ".csv")
+                {
+                    StatusText.Text = "CSV-Quelltext";
+                }
+                else
+                {
+                    StatusText.Text = PrettyPrintMenuItem.IsChecked ? "Formatierte Ansicht" : "Rohtext";
+                }
+                SearchTextBox.Text = document.SearchQuery ?? string.Empty;
+                lastSearchQuery = document.LastSearchQuery;
+                searchStartIndex = document.SearchStartIndex;
+            }
+            finally
+            {
+                isRefreshingView = false;
+            }
+            UpdateStatusBar();
+            UpdateEditCommandState();
+            UpdatePrettyPrintButtons();
+            UpdateTabHeader(document);
+        }
+
+        private void SaveActiveDocumentState()
+        {
+            if (activeDocument == null || TextView == null || currentPath == null)
+            {
+                return;
+            }
+
+            activeDocument.Path = currentPath;
+            activeDocument.RawContent = rawContent;
+            activeDocument.Extension = currentExtension;
+            activeDocument.EditorContent = TextView.Text;
+            activeDocument.SavedEditorContent = savedEditorContent;
+            activeDocument.SearchQuery = SearchTextBox.Text;
+            activeDocument.LastSearchQuery = lastSearchQuery;
+            activeDocument.SearchStartIndex = searchStartIndex;
+            activeDocument.SelectionStart = TextView.SelectionStart;
+            activeDocument.SelectionLength = TextView.SelectionLength;
+            activeDocument.Encoding = fileEncoding;
+            activeDocument.HasPreamble = fileHasPreamble;
+            activeDocument.IsDirty = isDirty;
+            activeDocument.MarkdownPreview = MarkdownRenderedMenuItem.IsChecked;
+            activeDocument.CsvPreview = CsvPreviewMenuItem.IsChecked;
+            activeDocument.PrettyPrint = PrettyPrintMenuItem.IsChecked;
+            activeDocument.WordWrap = WordWrapMenuItem.IsChecked;
+            activeDocument.FileSize = currentFileSize;
+        }
+
+        private void ClearEditorUndoHistory()
+        {
+            bool wasUndoEnabled = TextView.IsUndoEnabled;
+            TextView.IsUndoEnabled = false;
+            TextView.IsUndoEnabled = wasUndoEnabled;
+        }
+
+        private static void UpdateTabHeader(DocumentTabState document)
+        {
+            if (document != null && document.HeaderText != null)
+            {
+                document.HeaderText.Text = (document.IsDirty ? "* " : string.Empty) +
+                                           Path.GetFileName(document.Path);
+            }
+        }
+
+        private void UpdateActiveTabHeader()
+        {
+            if (activeDocument != null)
+            {
+                activeDocument.IsDirty = isDirty;
+                UpdateTabHeader(activeDocument);
+            }
         }
 
         private void AddRecentFile(string path)
@@ -1304,30 +1662,14 @@ namespace NativeViewer
 
         private void ShowError(string path, string message)
         {
-            csvPreviewTimer.Stop();
-            currentPath = null;
-            rawContent = null;
-            savedEditorContent = null;
-            isDirty = false;
-            currentFileSize = -1;
-            fileEncoding = new UTF8Encoding(false, true);
-            fileHasPreamble = false;
-            MarkdownRenderedMenuItem.IsEnabled = false;
-            MarkdownView.Visibility = Visibility.Collapsed;
-            CsvPreviewMenuItem.IsEnabled = false;
-            CsvPreviewMenuItem.IsChecked = false;
-            CsvView.Visibility = Visibility.Collapsed;
-            CsvView.ItemsSource = null;
-            CsvView.Columns.Clear();
-            TextView.Visibility = Visibility.Visible;
-            Grid.SetColumnSpan(TextView, 2);
-            TextView.Text = message;
-            UpdatePrettyPrintButtons();
-            FileNameText.Text = Path.GetFileName(path);
-            FilePathText.Text = path;
             StatusText.Text = message;
-            UpdateStatusBar();
-            UpdateEditCommandState();
+            if (activeDocument == null)
+            {
+                FileNameText.Text = Path.GetFileName(path);
+                FilePathText.Text = path;
+                Title = "RhaView";
+                UpdateStatusBar();
+            }
         }
 
         private static string FormatJson(string json, int indentSize)

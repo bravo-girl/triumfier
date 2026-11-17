@@ -9,6 +9,7 @@
         Background="#FFF7F8FA"
         Language="de-DE"
         KeyDown="Window_KeyDown"
+        Closing="Window_Closing"
         AllowDrop="True"
         DragOver="Window_DragOver"
         Drop="Window_Drop">
@@ -16,6 +17,7 @@
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_Datei">
                 <MenuItem Header="_Öffnen…" InputGestureText="F4 / Strg+O" Click="OpenButton_Click" />
+                <MenuItem Header="Neues _Fenster" InputGestureText="Strg+N" Click="NewWindowMenuItem_Click" />
                 <MenuItem x:Name="RecentFilesMenuItem" Header="Zuletzt geöffnet" SubmenuOpened="RecentFilesMenuItem_SubmenuOpened" />
                 <Separator />
                 <MenuItem Header="_Speichern" InputGestureText="F2 / Strg+S" Click="SaveMenuItem_Click" />
@@ -96,9 +98,22 @@
         <Grid Margin="12">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <DockPanel x:Name="SearchPanel" Grid.Row="0" Margin="0,0,0,8" Visibility="Collapsed">
+            <TabControl x:Name="DocumentTabs"
+                        Grid.Row="0"
+                        Margin="0,0,0,8"
+                        SelectionChanged="DocumentTabs_SelectionChanged">
+                <TabControl.Template>
+                    <ControlTemplate TargetType="{x:Type TabControl}">
+                        <DockPanel>
+                            <TabPanel IsItemsHost="True" />
+                        </DockPanel>
+                    </ControlTemplate>
+                </TabControl.Template>
+            </TabControl>
+            <DockPanel x:Name="SearchPanel" Grid.Row="1" Margin="0,0,0,8" Visibility="Collapsed">
                 <Button DockPanel.Dock="Right" Content="Schließen" Margin="8,0,0,0" Padding="10,5" Click="CloseSearchButton_Click" />
                 <Button DockPanel.Dock="Right" Content="Weitersuchen" Padding="10,5" Click="FindNextButton_Click" />
                 <Button DockPanel.Dock="Right" Content="Vorheriger Treffer" Padding="10,5" Click="FindPreviousButton_Click" />
@@ -112,7 +127,7 @@
                          TextChanged="SearchTextBox_TextChanged"
                          KeyDown="SearchTextBox_KeyDown" />
             </DockPanel>
-            <Grid x:Name="ViewGrid" Grid.Row="1">
+            <Grid x:Name="ViewGrid" Grid.Row="2">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
@@ -121,7 +136,7 @@
                          Grid.Column="0"
                          Grid.ColumnSpan="2"
                          Visibility="Visible"
-                         IsReadOnly="False"
+                         IsReadOnly="True"
                          AcceptsReturn="True"
                          AcceptsTab="True"
                          UndoLimit="500"

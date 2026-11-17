@@ -12,6 +12,7 @@ namespace NativeViewer
     {
         public App()
         {
+            ShutdownMode = ShutdownMode.OnLastWindowClose;
             CultureInfo germanCulture = CultureInfo.GetCultureInfo("de-DE");
             Thread.CurrentThread.CurrentCulture = germanCulture;
             Thread.CurrentThread.CurrentUICulture = germanCulture;
@@ -27,7 +28,8 @@ namespace NativeViewer
                 {
                     MessageBox.Show(
                         "Aufruf: RhaView [Datei ...]\n\n" +
-                        "Jede Datei wird in einem eigenen Fenster geöffnet.\n" +
+                        "Mehrere Dateien werden als Tabs in einem Fenster geöffnet.\n" +
+                        "Über Datei → Neues Fenster können separate Fenster geöffnet werden.\n" +
                         "Dateimuster im Dateinamen unterstützen * und ?, zum Beispiel:\n" +
                         "RhaView .\\*.xml",
                         "RhaView – Hilfe", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -51,10 +53,8 @@ namespace NativeViewer
                 return;
             }
 
-            foreach (string path in paths)
-            {
-                OpenFileInNewWindow(path);
-            }
+            MainWindow window = OpenFileInNewWindow(null);
+            window.OpenFiles(paths);
         }
 
         public static MainWindow OpenFileInNewWindow(string path)
