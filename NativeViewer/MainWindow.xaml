@@ -91,6 +91,11 @@
                     <TextBlock x:Name="FileSizeText" Foreground="#FF68717D" Margin="8,0" />
                     <TextBlock x:Name="PositionText" Foreground="#FF68717D" Margin="8,0" />
                     <TextBlock x:Name="ModifiedText" Foreground="#FF35404B" Margin="8,0" />
+                    <TextBlock x:Name="ClockStatusText"
+                               Foreground="#FF68717D"
+                               FontSize="10"
+                               Margin="8,0"
+                               TextTrimming="CharacterEllipsis" />
                 </StackPanel>
                 <TextBlock x:Name="StatusText" Foreground="#FF68717D" Text="Bereit" TextTrimming="CharacterEllipsis" />
             </DockPanel>
@@ -117,8 +122,28 @@
                 <Button DockPanel.Dock="Right" Content="Schließen" Margin="8,0,0,0" Padding="10,5" Click="CloseSearchButton_Click" />
                 <Button DockPanel.Dock="Right" Content="Weitersuchen" Padding="10,5" Click="FindNextButton_Click" />
                 <Button DockPanel.Dock="Right" Content="Vorheriger Treffer" Padding="10,5" Click="FindPreviousButton_Click" />
-                <CheckBox x:Name="RegexCheckBox" DockPanel.Dock="Right" Content="Regulärer Ausdruck" VerticalAlignment="Center" Margin="12,0" />
-                <CheckBox x:Name="MatchCaseCheckBox" DockPanel.Dock="Right" Content="Groß-/Kleinschreibung beachten" VerticalAlignment="Center" Margin="12,0" />
+                <CheckBox x:Name="RegexCheckBox"
+                          DockPanel.Dock="Right"
+                          Content="Regulärer Ausdruck"
+                          VerticalAlignment="Center"
+                          Margin="12,0"
+                          Checked="SearchPatternMode_Checked"
+                          Unchecked="SearchOptions_Changed" />
+                <CheckBox x:Name="WildcardCheckBox"
+                          DockPanel.Dock="Right"
+                          Content="Stringmatch (*, ?)"
+                          ToolTip="* steht für eine beliebige Zeichenfolge, ? für ein einzelnes Zeichen."
+                          VerticalAlignment="Center"
+                          Margin="12,0"
+                          Checked="SearchPatternMode_Checked"
+                          Unchecked="SearchOptions_Changed" />
+                <CheckBox x:Name="MatchCaseCheckBox"
+                          DockPanel.Dock="Right"
+                          Content="Groß-/Kleinschreibung beachten"
+                          VerticalAlignment="Center"
+                          Margin="12,0"
+                          Checked="SearchOptions_Changed"
+                          Unchecked="SearchOptions_Changed" />
                 <TextBox x:Name="SearchTextBox"
                          MinWidth="180"
                          Padding="7,5"
@@ -128,13 +153,7 @@
                          KeyDown="SearchTextBox_KeyDown" />
             </DockPanel>
             <Grid x:Name="ViewGrid" Grid.Row="2">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
                 <TextBox x:Name="TextView"
-                         Grid.Column="0"
-                         Grid.ColumnSpan="2"
                          Visibility="Visible"
                          IsReadOnly="True"
                          AcceptsReturn="True"
@@ -153,7 +172,6 @@
                          TextChanged="TextView_TextChanged"
                          SelectionChanged="TextView_SelectionChanged" />
                 <FlowDocumentScrollViewer x:Name="MarkdownView"
-                                          Grid.Column="1"
                                           Visibility="Collapsed"
                                           VerticalScrollBarVisibility="Auto"
                                           Padding="16"
@@ -161,7 +179,6 @@
                                           BorderBrush="#FFE1E5EA"
                                           BorderThickness="1" />
                 <DataGrid x:Name="CsvView"
-                          Grid.Column="1"
                           Visibility="Collapsed"
                           IsReadOnly="True"
                           AutoGenerateColumns="True"

@@ -19,12 +19,12 @@ Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 - Dateien als Kommandozeilenargumente übergeben; `*` und `?` im Dateinamen werden unterstützt, zum Beispiel `RhaView .\*.xml`
 - Liste der 50 zuletzt geöffneten Dateien, lokal neben der EXE gespeichert
 - JSON, XML, Markdown, HTML, CSS, CSV und Text bearbeiten und speichern
-- Markdown-Quelltext mit Live-Vorschau bearbeiten
+- Markdown-Quelltext bearbeiten und zwischen Quelltext und Vorschau umschalten
 - HTML/CSS-Quelltext formatieren
-- CSV-Trennzeichen Komma/Semikolon automatisch erkennen und als Tabelle mit automatisch angepassten Spalten anzeigen
+- CSV-Trennzeichen Komma/Semikolon automatisch erkennen und zwischen Quelltext und Tabelle mit automatisch angepassten Spalten umschalten
 - In der Symbolleiste zwischen formatierter Ansicht und Rohtext wechseln sowie die Einrückung per -1/+1 anpassen
-- Rückgängig/Wiederholen, Weitersuchen und Treffer markieren
-- Statusleiste mit Dateiname, Größe, Zeile/Spalte und Änderungsstatus
+- Rückgängig/Wiederholen, reguläre Suche und Stringmatch mit `*`/`?`, Weitersuchen und Treffer markieren
+- Statusleiste mit Dateiname, Größe, Zeile/Spalte, Änderungsstatus sowie lokaler und UTC-Uhrzeit (sekündlich aktualisiert)
 - Ein-Tasten-Kürzel: F1 Hilfe, F2 Speichern, F3 Weitersuchen, F4 Öffnen, F6 Suche, F8 vorheriger Treffer
 - Strg-Tastenkürzel bleiben als Alternative verfügbar
 - Datei speichern oder **Speichern unter…**
@@ -39,7 +39,7 @@ Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 - TXT-Dateien unverändert lesen
 - Ungültiges JSON/XML mit verständlichem Status anzeigen und den Originaltext beibehalten
 
-JSON, XML, HTML und CSS werden standardmäßig formatiert angezeigt. **Speichern** schreibt den aktuellen Editorinhalt; CSV wird in einer Tabelle mit separat editierbarem Quelltext angezeigt. UTF-8-, UTF-16- und UTF-32-BOMs werden erkannt und beim Speichern erhalten. Dateien ohne BOM werden als striktes UTF-8 gelesen und bleiben BOM-los. Die Markdown-Darstellung unterstützt bewusst einen häufig genutzten Teilumfang und ist kein vollständiger CommonMark-Parser.
+JSON, XML, HTML und CSS werden standardmäßig formatiert angezeigt. Quelltext und Vorschau/Tabelle werden platzsparend einzeln angezeigt und lassen sich umschalten; jedes Fenster kann geöffnete Dateien in der Quellansicht bearbeiten. **Speichern** schreibt den aktuellen Editorinhalt. UTF-8-, UTF-16- und UTF-32-BOMs werden erkannt und beim Speichern erhalten. Dateien ohne BOM werden als striktes UTF-8 gelesen und bleiben BOM-los. Die Markdown-Darstellung unterstützt bewusst einen häufig genutzten Teilumfang und ist kein vollständiger CommonMark-Parser.
 
 Die letzten Dateien und eine abweichende Einrückung werden in `RhaView.settings.xml` im EXE-Ordner gespeichert. Die Einrückung ist standardmäßig 3 Leerzeichen; dieser Wert wird nur dann in der Einstellungsdatei abgelegt, wenn er geändert wurde. Zum Schreiben der lokalen Einstellungen braucht die Anwendung Schreibrechte im EXE-Ordner.
 

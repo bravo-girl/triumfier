@@ -70,6 +70,7 @@ namespace NativeViewer
         private bool isDirty;
         private bool isRefreshingView;
         private readonly DispatcherTimer csvPreviewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
+        private readonly DispatcherTimer clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         private static int indentSize = DefaultIndentSize;
         private Encoding fileEncoding = new UTF8Encoding(false, true);
         private bool fileHasPreamble;
@@ -102,6 +103,9 @@ namespace NativeViewer
         {
             InitializeComponent();
             csvPreviewTimer.Tick += CsvPreviewTimer_Tick;
+            clockTimer.Tick += ClockTimer_Tick;
+            UpdateClockStatusText();
+            clockTimer.Start();
             if (!settingsLoaded)
             {
                 settingsLoaded = true;
@@ -176,6 +180,7 @@ namespace NativeViewer
                     }
                 }
             }
+            clockTimer.Stop();
         }
 
         private void NewWindowMenuItem_Click(object sender, RoutedEventArgs e)
@@ -290,18 +295,31 @@ namespace NativeViewer
 
         private void PrettyPrintMenuItem_Click(object sender, RoutedEventArgs e)
         {
-            RefreshView();
+            ApplyPrettyMode(PrettyPrintMenuItem.IsChecked);
         }
 
         private void PrettyPrintButton_Click(object sender, RoutedEventArgs e)
         {
-            PrettyPrintMenuItem.IsChecked = true;
-            RefreshView();
+            ApplyPrettyMode(true);
         }
 
         private void RawTextButton_Click(object sender, RoutedEventArgs e)
         {
-            PrettyPrintMenuItem.IsChecked = false;
+            ApplyPrettyMode(false);
+        }
+
+        private void ApplyPrettyMode(bool pretty)
+        {
+            PrettyPrintMenuItem.IsChecked = pretty;
+            if (currentExtension == ".md" || currentExtension == ".markdown")
+            {
+                MarkdownRenderedMenuItem.IsChecked = pretty;
+            }
+            else if (currentExtension == ".csv")
+            {
+                CsvPreviewMenuItem.IsChecked = pretty;
+            }
+            ResetSearch();
             RefreshView();
         }
 
@@ -317,12 +335,12 @@ namespace NativeViewer
 
         private void MarkdownRenderedMenuItem_Click(object sender, RoutedEventArgs e)
         {
-            RefreshView();
+            ApplyPrettyMode(MarkdownRenderedMenuItem.IsChecked);
         }
 
         private void CsvPreviewMenuItem_Click(object sender, RoutedEventArgs e)
         {
-            RefreshView();
+            ApplyPrettyMode(CsvPreviewMenuItem.IsChecked);
         }
 
         private void WordWrapMenuItem_Click(object sender, RoutedEventArgs e)
@@ -373,6 +391,29 @@ namespace NativeViewer
         }
 
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ResetSearch();
+        }
+
+        private void SearchPatternMode_Checked(object sender, RoutedEventArgs e)
+        {
+            if (sender == RegexCheckBox && RegexCheckBox.IsChecked == true)
+            {
+                WildcardCheckBox.IsChecked = false;
+            }
+            else if (sender == WildcardCheckBox && WildcardCheckBox.IsChecked == true)
+            {
+                RegexCheckBox.IsChecked = false;
+            }
+            ResetSearch();
+        }
+
+        private void SearchOptions_Changed(object sender, RoutedEventArgs e)
+        {
+            ResetSearch();
+        }
+
+        private void ResetSearch()
         {
             lastSearchQuery = null;
             searchStartIndex = 0;
@@ -586,11 +627,17 @@ namespace NativeViewer
             bool supported = currentPath != null &&
                              (currentExtension == ".json" || currentExtension == ".xml" ||
                               currentExtension == ".html" || currentExtension == ".htm" ||
-                              currentExtension == ".css");
+                              currentExtension == ".css" || currentExtension == ".md" ||
+                              currentExtension == ".markdown" || currentExtension == ".csv");
+            bool pretty = currentExtension == ".md" || currentExtension == ".markdown"
+                ? MarkdownRenderedMenuItem.IsChecked
+                : currentExtension == ".csv"
+                    ? CsvPreviewMenuItem.IsChecked
+                    : PrettyPrintMenuItem.IsChecked;
             PrettyPrintButton.IsEnabled = supported;
             RawTextButton.IsEnabled = supported;
-            PrettyPrintButton.IsChecked = PrettyPrintMenuItem.IsChecked;
-            RawTextButton.IsChecked = !PrettyPrintMenuItem.IsChecked;
+            PrettyPrintButton.IsChecked = pretty;
+            RawTextButton.IsChecked = !pretty;
         }
 
         private void TextView_TextChanged(object sender, TextChangedEventArgs e)
@@ -681,6 +728,20 @@ namespace NativeViewer
             Title = (isDirty ? "* " : string.Empty) + Path.GetFileName(currentPath) + " – RhaView";
             SaveActiveDocumentState();
             UpdateActiveTabHeader();
+        }
+
+        private void ClockTimer_Tick(object sender, EventArgs e)
+        {
+            UpdateClockStatusText();
+        }
+
+        private void UpdateClockStatusText()
+        {
+            DateTime localNow = DateTime.Now;
+            DateTime utcNow = DateTime.UtcNow;
+            ClockStatusText.Text =
+                localNow.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture) + " lokal | " +
+                utcNow.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture) + " UTC";
         }
 
         private static string FormatFileSize(long bytes)
@@ -1023,7 +1084,6 @@ namespace NativeViewer
                     CsvView.ItemsSource = null;
                     CsvView.Columns.Clear();
                     TextView.Visibility = Visibility.Visible;
-                    Grid.SetColumnSpan(TextView, 2);
                 }
                 finally
                 {
@@ -1073,17 +1133,16 @@ namespace NativeViewer
                 MarkdownView.Visibility = Visibility.Collapsed;
                 CsvView.Visibility = Visibility.Collapsed;
                 TextView.Visibility = Visibility.Visible;
-                Grid.SetColumnSpan(TextView, 2);
                 if (MarkdownRenderedMenuItem.IsEnabled && MarkdownRenderedMenuItem.IsChecked)
                 {
-                    Grid.SetColumnSpan(TextView, 1);
+                    TextView.Visibility = Visibility.Collapsed;
                     MarkdownView.Visibility = Visibility.Visible;
                     MarkdownView.Document = RenderMarkdown(rawContent, fontSize);
                     StatusText.Text = "Markdown-Vorschau";
                 }
                 else if (CsvPreviewMenuItem.IsEnabled && CsvPreviewMenuItem.IsChecked)
                 {
-                    Grid.SetColumnSpan(TextView, 1);
+                    TextView.Visibility = Visibility.Collapsed;
                     CsvView.Visibility = Visibility.Visible;
                     RefreshCsvPreview(rawContent);
                 }
@@ -1370,27 +1429,26 @@ namespace NativeViewer
             try
             {
                 TextView.FontSize = fontSize;
+                TextView.Visibility = Visibility.Visible;
                 MarkdownView.Visibility = Visibility.Collapsed;
                 CsvView.Visibility = Visibility.Collapsed;
                 if (currentExtension == ".md" || currentExtension == ".markdown")
                 {
                     CsvPreviewMenuItem.IsEnabled = false;
+                    PrettyPrintMenuItem.IsChecked = MarkdownRenderedMenuItem.IsChecked;
                     if (!string.Equals(TextView.Text, rawContent, StringComparison.Ordinal))
                     {
                         TextView.Text = rawContent;
                     }
                     if (MarkdownRenderedMenuItem.IsChecked)
                     {
-                        Grid.SetColumnSpan(TextView, 1);
-                        TextView.Visibility = Visibility.Visible;
+                        TextView.Visibility = Visibility.Collapsed;
                         MarkdownView.Visibility = Visibility.Visible;
                         MarkdownView.Document = RenderMarkdown(rawContent, fontSize);
                         StatusText.Text = "Markdown-Vorschau";
                     }
                     else
                     {
-                        Grid.SetColumnSpan(TextView, 2);
-                        MarkdownView.Visibility = Visibility.Collapsed;
                         TextView.Visibility = Visibility.Visible;
                         StatusText.Text = "Markdown-Quelltext";
                     }
@@ -1401,16 +1459,17 @@ namespace NativeViewer
                 if (currentExtension == ".csv")
                 {
                     CsvPreviewMenuItem.IsEnabled = true;
+                    PrettyPrintMenuItem.IsChecked = CsvPreviewMenuItem.IsChecked;
                     TextView.Text = rawContent;
                     if (CsvPreviewMenuItem.IsChecked)
                     {
-                        Grid.SetColumnSpan(TextView, 1);
+                        TextView.Visibility = Visibility.Collapsed;
                         CsvView.Visibility = Visibility.Visible;
                         RefreshCsvPreview(rawContent);
                     }
                     else
                     {
-                        Grid.SetColumnSpan(TextView, 2);
+                        TextView.Visibility = Visibility.Visible;
                         StatusText.Text = "CSV-Quelltext";
                     }
                     return;
@@ -1420,7 +1479,6 @@ namespace NativeViewer
                 CsvView.ItemsSource = null;
                 CsvView.Columns.Clear();
                 TextView.Visibility = Visibility.Visible;
-                Grid.SetColumnSpan(TextView, 2);
                 string displayText = rawContent;
                 string status = currentExtension == ".json" ? "JSON" :
                                 currentExtension == ".xml" ? "XML" :
@@ -1475,6 +1533,7 @@ namespace NativeViewer
                 }
                 UpdateStatusBar();
                 UpdateEditCommandState();
+                UpdatePrettyPrintButtons();
             }
         }
 
@@ -1585,21 +1644,32 @@ namespace NativeViewer
                 return;
             }
 
+            if ((MarkdownRenderedMenuItem.IsEnabled && MarkdownRenderedMenuItem.IsChecked) ||
+                (CsvPreviewMenuItem.IsEnabled && CsvPreviewMenuItem.IsChecked))
+            {
+                ApplyPrettyMode(false);
+            }
+
             if (!string.Equals(query, lastSearchQuery, StringComparison.Ordinal))
             {
                 lastSearchQuery = query;
                 searchStartIndex = reverse ? searchTextLength() : 0;
             }
 
-            string searchText = currentExtension == ".md" || currentExtension == ".markdown"
-                ? rawContent
-                : TextView.Text;
+            string searchText = TextView.Text;
             try
             {
                 RegexOptions options = MatchCaseCheckBox.IsChecked == true
                     ? RegexOptions.None
                     : RegexOptions.IgnoreCase;
-                string pattern = RegexCheckBox.IsChecked == true ? query : Regex.Escape(query);
+                bool stringMatch = WildcardCheckBox.IsChecked == true;
+                if (stringMatch)
+                {
+                    options |= RegexOptions.Singleline;
+                }
+                string pattern = RegexCheckBox.IsChecked == true
+                    ? query
+                    : stringMatch ? StringMatchToRegex(query) : Regex.Escape(query);
                 Regex searchRegex = new Regex(pattern, options, TimeSpan.FromSeconds(2));
                 Match match = Match.Empty;
                 if (reverse)
@@ -1649,15 +1719,34 @@ namespace NativeViewer
             }
             catch (RegexMatchTimeoutException)
             {
-                StatusText.Text = "Die Suche mit regulärem Ausdruck hat das Zeitlimit überschritten.";
+                StatusText.Text = "Die Suche hat das Zeitlimit überschritten.";
             }
+        }
+
+        private static string StringMatchToRegex(string pattern)
+        {
+            StringBuilder regexPattern = new StringBuilder(pattern.Length * 2);
+            foreach (char character in pattern)
+            {
+                if (character == '*')
+                {
+                    regexPattern.Append(".*");
+                }
+                else if (character == '?')
+                {
+                    regexPattern.Append('.');
+                }
+                else
+                {
+                    regexPattern.Append(Regex.Escape(character.ToString()));
+                }
+            }
+            return regexPattern.ToString();
         }
 
         private int searchTextLength()
         {
-            return (currentExtension == ".md" || currentExtension == ".markdown")
-                ? (rawContent == null ? 0 : rawContent.Length)
-                : TextView.Text.Length;
+            return TextView.Text.Length;
         }
 
         private void ShowError(string path, string message)
