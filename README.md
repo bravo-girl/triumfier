@@ -5,10 +5,10 @@ Ein kleiner Windows-Desktop-Viewer für JSON-, XML-, Markdown- und TXT-Dateien.
 ## Voraussetzungen
 
 - Windows 11
-- Das in Windows enthaltene .NET Framework 4.x
-- Keine NuGet-Pakete und keine zusätzlichen Laufzeitbibliotheken
+- Für den Ziel-PC ist keine .NET-Installation erforderlich
+- Die Anwendung wird als einzelne, selbstenthaltende Windows-x64-EXE veröffentlicht
 
-Das Projekt zielt auf .NET Framework 4.5.2; Windows 11 stellt eine kompatible .NET-Framework-Version bereit.
+Die EXE enthält die benötigte .NET-Desktop-Laufzeit. Derzeit ist das Ziel Windows x64; ARM64 wird nicht mit dieser Ausgabe abgedeckt.
 
 ## Funktionen
 
@@ -27,4 +27,12 @@ JSON und XML werden standardmäßig formatiert angezeigt. **Speichern** schreibt
 
 ## Build
 
-Die Solution kann mit Visual Studio unter Windows geöffnet und gebaut werden. Es werden keine externen Pakete wiederhergestellt.
+Im Projektverzeichnis ausführen:
+
+```powershell
+dotnet publish NativeViewer\NativeViewer.csproj -c Release -r win-x64 --source https://api.nuget.org/v3/index.json
+```
+
+Die weiterzugebende Datei liegt anschließend in `NativeViewer\bin\Release\net10.0-windows\win-x64\publish\NativeViewer.exe`. Diese EXE kann allein auf einen Windows-11-x64-PC kopiert und dort gestartet werden. Es werden keine externen NuGet-Pakete verwendet.
+
+Beim Veröffentlichen lädt das .NET SDK die offiziellen .NET-Laufzeitpakete; diese sind in der EXE enthalten und müssen auf dem Ziel-PC nicht installiert werden.
