@@ -15,10 +15,10 @@
     <DockPanel>
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_Datei">
-                <MenuItem Header="_Öffnen…" InputGestureText="Strg+O" Click="OpenButton_Click" />
+                <MenuItem Header="_Öffnen…" InputGestureText="F4 / Strg+O" Click="OpenButton_Click" />
                 <MenuItem x:Name="RecentFilesMenuItem" Header="Zuletzt geöffnet" SubmenuOpened="RecentFilesMenuItem_SubmenuOpened" />
                 <Separator />
-                <MenuItem Header="_Speichern" InputGestureText="Strg+S" Click="SaveMenuItem_Click" />
+                <MenuItem Header="_Speichern" InputGestureText="F2 / Strg+S" Click="SaveMenuItem_Click" />
                 <MenuItem Header="Speichern _unter…" InputGestureText="Strg+Umschalt+S" Click="SaveAsMenuItem_Click" />
                 <Separator />
                 <MenuItem Header="_Beenden" Click="ExitMenuItem_Click" />
@@ -26,6 +26,7 @@
             <MenuItem Header="_Ansicht">
                 <MenuItem x:Name="PrettyPrintMenuItem" Header="Formatierte Ansicht" IsCheckable="True" IsChecked="True" Click="PrettyPrintMenuItem_Click" />
                 <MenuItem x:Name="MarkdownRenderedMenuItem" Header="Markdown-Darstellung" IsCheckable="True" IsChecked="True" IsEnabled="False" Click="MarkdownRenderedMenuItem_Click" />
+                <MenuItem x:Name="CsvPreviewMenuItem" Header="CSV-Tabellenansicht" IsCheckable="True" IsChecked="True" IsEnabled="False" Click="CsvPreviewMenuItem_Click" />
                 <MenuItem x:Name="WordWrapMenuItem" Header="Zeilenumbruch" IsCheckable="True" Click="WordWrapMenuItem_Click" />
             </MenuItem>
             <MenuItem Header="_Bearbeiten">
@@ -39,7 +40,7 @@
                 <MenuItem Header="Alles auswählen" InputGestureText="Strg+A" Click="SelectAllMenuItem_Click" />
             </MenuItem>
             <MenuItem Header="_Suche">
-                <MenuItem Header="Suche ein-/ausblenden…" InputGestureText="Strg+F" Click="SearchMenuItem_Click" />
+                <MenuItem Header="Suche ein-/ausblenden…" InputGestureText="F6 / Strg+F" Click="SearchMenuItem_Click" />
             </MenuItem>
             <MenuItem Header="_Einstellungen">
                 <MenuItem Header="Schriftgröße">
@@ -48,7 +49,8 @@
                     <MenuItem Header="Zurücksetzen" Click="ResetFontMenuItem_Click" />
                 </MenuItem>
                 <MenuItem Header="Einrückung">
-                    <MenuItem x:Name="Indent2MenuItem" Header="2 Leerzeichen (Standard)" IsCheckable="True" Tag="2" Click="IndentSizeMenuItem_Click" />
+                    <MenuItem x:Name="Indent2MenuItem" Header="2 Leerzeichen" IsCheckable="True" Tag="2" Click="IndentSizeMenuItem_Click" />
+                    <MenuItem x:Name="Indent3MenuItem" Header="3 Leerzeichen (Standard)" IsCheckable="True" Tag="3" Click="IndentSizeMenuItem_Click" />
                     <MenuItem x:Name="Indent4MenuItem" Header="4 Leerzeichen" IsCheckable="True" Tag="4" Click="IndentSizeMenuItem_Click" />
                     <MenuItem x:Name="Indent8MenuItem" Header="8 Leerzeichen" IsCheckable="True" Tag="8" Click="IndentSizeMenuItem_Click" />
                     <Separator />
@@ -67,12 +69,12 @@
             <DockPanel LastChildFill="True">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <Button x:Name="UndoButton" Content="Rückgängig" ToolTip="Letzte Änderung rückgängig machen (Strg+Z)" Padding="10,7" Margin="4,0" Click="UndoMenuItem_Click" IsEnabled="False" />
-                    <Button Content="Speichern" ToolTip="Datei speichern (Strg+S)" Padding="10,7" Margin="4,0" Click="SaveMenuItem_Click" />
-                    <Button Content="Öffnen…" Padding="10,7" Margin="4,0" Click="OpenButton_Click" />
+                    <Button Content="Speichern" ToolTip="Datei speichern (F2 oder Strg+S)" Padding="10,7" Margin="4,0" Click="SaveMenuItem_Click" />
+                    <Button Content="Öffnen…" ToolTip="Datei öffnen (F4 oder Strg+O)" Padding="10,7" Margin="4,0" Click="OpenButton_Click" />
                 </StackPanel>
                 <StackPanel>
                     <TextBlock x:Name="FileNameText" Text="Datei öffnen oder hier ablegen" FontSize="16" FontWeight="SemiBold" />
-                    <TextBlock x:Name="FilePathText" Margin="0,3,0,0" Foreground="#FF68717D" Text="Unterstützt JSON, XML, Markdown und Text" />
+                    <TextBlock x:Name="FilePathText" Margin="0,3,0,0" Foreground="#FF68717D" Text="JSON, XML, Markdown, HTML, CSS, CSV und Text" />
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -139,6 +141,20 @@
                                           Background="White"
                                           BorderBrush="#FFE1E5EA"
                                           BorderThickness="1" />
+                <DataGrid x:Name="CsvView"
+                          Grid.Column="1"
+                          Visibility="Collapsed"
+                          IsReadOnly="True"
+                          AutoGenerateColumns="True"
+                          ColumnWidth="SizeToCells"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="All"
+                          FontFamily="Consolas"
+                          FontSize="14"
+                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto" />
             </Grid>
         </Grid>
     </DockPanel>

@@ -1,6 +1,7 @@
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -13,12 +14,13 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace NativeViewer
 {
     public partial class MainWindow : Window
     {
-        private const int DefaultIndentSize = 2;
+        private const int DefaultIndentSize = 3;
         private const int MaximumRecentFiles = 50;
         private const string MitLicenseText =
             "MIT License\n\n" +
@@ -39,8 +41,20 @@ namespace NativeViewer
             "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.";
         private static readonly Regex MarkdownInlinePattern =
             new Regex(@"(\*\*.+?\*\*|__.+?__|`[^`]+`|\*[^*]+\*|_[^_]+_)", RegexOptions.Compiled);
+        private static readonly HashSet<string> HtmlBlockElements = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "html", "head", "body", "title", "div", "section", "article", "header", "footer", "nav", "main",
+            "aside", "p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "dl", "dt", "dd",
+            "table", "thead", "tbody", "tfoot", "tr", "th", "td", "form", "fieldset", "legend", "blockquote",
+            "hr", "br", "meta", "link", "style", "script", "pre", "textarea"
+        };
+        private static readonly HashSet<string> HtmlVoidElements = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+            "track", "wbr"
+        };
         private static readonly List<string> recentFiles = new List<string>();
-        private static readonly string settingsPath = Path.Combine(AppContext.BaseDirectory, "RhaView.settings.xml");
+        private static readonly string settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "RhaView.settings.xml");
         private static bool settingsLoaded;
         private string currentPath;
         private string rawContent;
@@ -52,6 +66,7 @@ namespace NativeViewer
         private string savedEditorContent;
         private bool isDirty;
         private bool isRefreshingView;
+        private readonly DispatcherTimer csvPreviewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         private static int indentSize = DefaultIndentSize;
         private Encoding fileEncoding = new UTF8Encoding(false, true);
         private bool fileHasPreamble;
@@ -59,6 +74,7 @@ namespace NativeViewer
         public MainWindow()
         {
             InitializeComponent();
+            csvPreviewTimer.Tick += CsvPreviewTimer_Tick;
             if (!settingsLoaded)
             {
                 settingsLoaded = true;
@@ -72,7 +88,7 @@ namespace NativeViewer
         {
             OpenFileDialog dialog = new OpenFileDialog
             {
-                Filter = "Unterstützte Dateien|*.json;*.xml;*.md;*.markdown;*.txt|Alle Dateien|*.*",
+                Filter = "Unterstützte Dateien|*.json;*.xml;*.md;*.markdown;*.html;*.htm;*.css;*.csv;*.txt|Alle Dateien|*.*",
                 CheckFileExists = true,
                 Multiselect = true
             };
@@ -110,7 +126,7 @@ namespace NativeViewer
 
         private void AboutMenuItem_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show(this, "RhaView 1.0\nDateibetrachter für JSON, XML, Markdown und Text.\n\nCopyright (c) 2026 RhaView 1.0\nMIT-Lizenz",
+            MessageBox.Show(this, "RhaView 1.0\nDateibetrachter und Editor für JSON, XML, Markdown, HTML, CSS, CSV und Text.\n\nCopyright (c) 2026 RhaView 1.0\nMIT-Lizenz",
                             "Über RhaView", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
@@ -143,9 +159,9 @@ namespace NativeViewer
         private void KeyboardHelpMenuItem_Click(object sender, RoutedEventArgs e)
         {
             MessageBox.Show(this,
-                "Datei öffnen: Strg+O\nSpeichern: Strg+S\nSpeichern unter: Strg+Umschalt+S\n" +
-                "Rückgängig: Strg+Z\nWiederholen: Strg+Y\nSuche ein-/ausblenden: Strg+F\n" +
-                "Nächster Treffer: F3\nVorheriger Treffer: Umschalt+F3\n" +
+                "F1 Hilfe\nF2 Speichern (auch Strg+S)\nF3 Weitersuchen\nF4 Öffnen (auch Strg+O)\n" +
+                "F6 Suche ein-/ausblenden\nF8 Vorheriger Treffer (auch Umschalt+F3)\n" +
+                "Speichern unter: Strg+Umschalt+S\nRückgängig/Wiederholen: Strg+Z / Strg+Y\n" +
                 "Ausschneiden/Kopieren/Einfügen/Alles auswählen: Strg+X / Strg+C / Strg+V / Strg+A",
                 "RhaView – Tastenkürzel", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -212,6 +228,11 @@ namespace NativeViewer
             RefreshView();
         }
 
+        private void CsvPreviewMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            RefreshView();
+        }
+
         private void WordWrapMenuItem_Click(object sender, RoutedEventArgs e)
         {
             TextView.TextWrapping = WordWrapMenuItem.IsChecked ? TextWrapping.Wrap : TextWrapping.NoWrap;
@@ -267,18 +288,27 @@ namespace NativeViewer
 
         private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
-            if (KeyboardShortcut(e, System.Windows.Input.Key.O, false))
+            System.Windows.Input.ModifierKeys modifiers = System.Windows.Input.Keyboard.Modifiers;
+            bool noModifiers = modifiers == System.Windows.Input.ModifierKeys.None;
+            if ((noModifiers && e.Key == System.Windows.Input.Key.F4) ||
+                KeyboardShortcut(e, System.Windows.Input.Key.O, false))
             {
                 OpenButton_Click(sender, e);
             }
-            else if (e.Key == System.Windows.Input.Key.S &&
-                     (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0)
+            else if ((noModifiers && e.Key == System.Windows.Input.Key.F2) ||
+                     (e.Key == System.Windows.Input.Key.S &&
+                      (modifiers & System.Windows.Input.ModifierKeys.Control) != 0))
             {
-                SaveFile(System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift));
+                SaveFile(modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift));
             }
-            else if (KeyboardShortcut(e, System.Windows.Input.Key.F, false))
+            else if ((noModifiers && e.Key == System.Windows.Input.Key.F6) ||
+                     KeyboardShortcut(e, System.Windows.Input.Key.F, false))
             {
                 SearchMenuItem_Click(sender, e);
+            }
+            else if (noModifiers && e.Key == System.Windows.Input.Key.F1)
+            {
+                KeyboardHelpMenuItem_Click(sender, e);
             }
             else if (KeyboardShortcut(e, System.Windows.Input.Key.Z, false))
             {
@@ -289,9 +319,13 @@ namespace NativeViewer
                 RedoMenuItem_Click(sender, e);
             }
             else if (e.Key == System.Windows.Input.Key.F3 &&
-                     (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == 0)
+                     (modifiers & (System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Alt)) == 0)
             {
-                FindNext(System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift));
+                FindNext(modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift));
+            }
+            else if (noModifiers && e.Key == System.Windows.Input.Key.F8)
+            {
+                FindNext(true);
             }
             else
             {
@@ -414,6 +448,7 @@ namespace NativeViewer
         {
             fontSize = Math.Max(8, Math.Min(32, size));
             TextView.FontSize = fontSize;
+            CsvView.FontSize = fontSize;
             RefreshView();
         }
 
@@ -443,6 +478,7 @@ namespace NativeViewer
         private void UpdateIndentMenuChecks()
         {
             Indent2MenuItem.IsChecked = indentSize == 2;
+            Indent3MenuItem.IsChecked = indentSize == 3;
             Indent4MenuItem.IsChecked = indentSize == 4;
             Indent8MenuItem.IsChecked = indentSize == 8;
         }
@@ -461,9 +497,23 @@ namespace NativeViewer
             {
                 MarkdownView.Document = RenderMarkdown(rawContent, fontSize);
             }
+            else if (currentExtension == ".csv" && CsvPreviewMenuItem.IsChecked)
+            {
+                csvPreviewTimer.Stop();
+                csvPreviewTimer.Start();
+            }
             UpdateCurrentFileSize();
             UpdateEditCommandState();
             UpdateStatusBar();
+        }
+
+        private void CsvPreviewTimer_Tick(object sender, EventArgs e)
+        {
+            csvPreviewTimer.Stop();
+            if (currentExtension == ".csv" && CsvPreviewMenuItem.IsChecked && rawContent != null)
+            {
+                RefreshCsvPreview(rawContent);
+            }
         }
 
         private void TextView_SelectionChanged(object sender, RoutedEventArgs e)
@@ -694,6 +744,7 @@ namespace NativeViewer
 
         private void DisplayFile(string path, string content)
         {
+            csvPreviewTimer.Stop();
             currentPath = path;
             rawContent = content;
             savedEditorContent = null;
@@ -701,6 +752,8 @@ namespace NativeViewer
             currentExtension = Path.GetExtension(path).ToLowerInvariant();
             MarkdownRenderedMenuItem.IsEnabled = currentExtension == ".md" || currentExtension == ".markdown";
             MarkdownRenderedMenuItem.IsChecked = MarkdownRenderedMenuItem.IsEnabled;
+            CsvPreviewMenuItem.IsEnabled = currentExtension == ".csv";
+            CsvPreviewMenuItem.IsChecked = CsvPreviewMenuItem.IsEnabled;
             lastSearchQuery = null;
             searchStartIndex = 0;
             FileNameText.Text = Path.GetFileName(path);
@@ -921,8 +974,11 @@ namespace NativeViewer
             try
             {
                 TextView.FontSize = fontSize;
+                MarkdownView.Visibility = Visibility.Collapsed;
+                CsvView.Visibility = Visibility.Collapsed;
                 if (currentExtension == ".md" || currentExtension == ".markdown")
                 {
+                    CsvPreviewMenuItem.IsEnabled = false;
                     if (!string.Equals(TextView.Text, rawContent, StringComparison.Ordinal))
                     {
                         TextView.Text = rawContent;
@@ -945,12 +1001,35 @@ namespace NativeViewer
                     return;
                 }
 
-                MarkdownView.Visibility = Visibility.Collapsed;
+                MarkdownRenderedMenuItem.IsEnabled = false;
+                if (currentExtension == ".csv")
+                {
+                    CsvPreviewMenuItem.IsEnabled = true;
+                    TextView.Text = rawContent;
+                    if (CsvPreviewMenuItem.IsChecked)
+                    {
+                        Grid.SetColumnSpan(TextView, 1);
+                        CsvView.Visibility = Visibility.Visible;
+                        RefreshCsvPreview(rawContent);
+                    }
+                    else
+                    {
+                        Grid.SetColumnSpan(TextView, 2);
+                        StatusText.Text = "CSV-Quelltext";
+                    }
+                    return;
+                }
+
+                CsvPreviewMenuItem.IsEnabled = false;
+                CsvView.ItemsSource = null;
+                CsvView.Columns.Clear();
                 TextView.Visibility = Visibility.Visible;
                 Grid.SetColumnSpan(TextView, 2);
                 string displayText = rawContent;
                 string status = currentExtension == ".json" ? "JSON" :
-                                currentExtension == ".xml" ? "XML" : "Textdatei";
+                                currentExtension == ".xml" ? "XML" :
+                                currentExtension == ".html" || currentExtension == ".htm" ? "HTML" :
+                                currentExtension == ".css" ? "CSS" : "Textdatei";
 
                 if (PrettyPrintMenuItem.IsChecked && currentExtension == ".json")
                 {
@@ -975,6 +1054,17 @@ namespace NativeViewer
                     {
                         status = "Ungültiges XML – Originaltext wird angezeigt: " + ex.Message;
                     }
+                }
+                else if (PrettyPrintMenuItem.IsChecked &&
+                         (currentExtension == ".html" || currentExtension == ".htm"))
+                {
+                    displayText = FormatHtml(rawContent, indentSize);
+                    status += " – formatiert";
+                }
+                else if (PrettyPrintMenuItem.IsChecked && currentExtension == ".css")
+                {
+                    displayText = FormatCss(rawContent, indentSize);
+                    status += " – formatiert";
                 }
 
                 TextView.Text = displayText;
@@ -1012,7 +1102,7 @@ namespace NativeViewer
                 {
                     Filter = "Alle Dateien|*.*",
                     FileName = Path.GetFileName(currentPath),
-                    InitialDirectory = currentPath == null ? AppContext.BaseDirectory : Path.GetDirectoryName(currentPath)
+                    InitialDirectory = currentPath == null ? AppDomain.CurrentDomain.BaseDirectory : Path.GetDirectoryName(currentPath)
                 };
                 if (dialog.ShowDialog(this) != true)
                 {
@@ -1023,37 +1113,27 @@ namespace NativeViewer
 
             try
             {
+                csvPreviewTimer.Stop();
                 string content = GetSaveContent();
                 WriteTextFile(path, content);
                 rawContent = content;
                 savedEditorContent = content;
                 isDirty = false;
                 currentPath = path;
+                string previousExtension = currentExtension;
                 currentExtension = Path.GetExtension(path).ToLowerInvariant();
                 MarkdownRenderedMenuItem.IsEnabled = currentExtension == ".md" || currentExtension == ".markdown";
+                CsvPreviewMenuItem.IsEnabled = currentExtension == ".csv";
+                if (!string.Equals(previousExtension, currentExtension, StringComparison.OrdinalIgnoreCase))
+                {
+                    MarkdownRenderedMenuItem.IsChecked = MarkdownRenderedMenuItem.IsEnabled;
+                    CsvPreviewMenuItem.IsChecked = CsvPreviewMenuItem.IsEnabled;
+                }
                 FilePathText.Text = path;
                 FileNameText.Text = Path.GetFileName(path);
                 currentFileSize = new FileInfo(path).Length;
                 Title = Path.GetFileName(path) + " – RhaView";
-                if (!MarkdownRenderedMenuItem.IsEnabled)
-                {
-                    MarkdownView.Visibility = Visibility.Collapsed;
-                    TextView.Visibility = Visibility.Visible;
-                    Grid.SetColumnSpan(TextView, 2);
-                }
-                else if (MarkdownRenderedMenuItem.IsChecked)
-                {
-                    TextView.Visibility = Visibility.Visible;
-                    Grid.SetColumnSpan(TextView, 1);
-                    MarkdownView.Visibility = Visibility.Visible;
-                    MarkdownView.Document = RenderMarkdown(content, fontSize);
-                }
-                else
-                {
-                    MarkdownView.Visibility = Visibility.Collapsed;
-                    TextView.Visibility = Visibility.Visible;
-                    Grid.SetColumnSpan(TextView, 2);
-                }
+                RefreshView();
                 AddRecentFile(path);
                 StatusText.Text = "Gespeichert";
                 UpdateStatusBar();
@@ -1186,6 +1266,7 @@ namespace NativeViewer
 
         private void ShowError(string path, string message)
         {
+            csvPreviewTimer.Stop();
             currentPath = null;
             rawContent = null;
             savedEditorContent = null;
@@ -1195,6 +1276,11 @@ namespace NativeViewer
             fileHasPreamble = false;
             MarkdownRenderedMenuItem.IsEnabled = false;
             MarkdownView.Visibility = Visibility.Collapsed;
+            CsvPreviewMenuItem.IsEnabled = false;
+            CsvPreviewMenuItem.IsChecked = false;
+            CsvView.Visibility = Visibility.Collapsed;
+            CsvView.ItemsSource = null;
+            CsvView.Columns.Clear();
             TextView.Visibility = Visibility.Visible;
             Grid.SetColumnSpan(TextView, 2);
             TextView.Text = message;
@@ -1321,6 +1407,511 @@ namespace NativeViewer
                 xmlWriter.Flush();
                 return writer.ToString();
             }
+        }
+
+        private static string FormatHtml(string html, int indentSize)
+        {
+            StringBuilder output = new StringBuilder(html.Length + 32);
+            int position = 0;
+            int indent = 0;
+            string rawTextElement = null;
+
+            while (position < html.Length)
+            {
+                if (rawTextElement != null)
+                {
+                    int closingTag = html.IndexOf("</" + rawTextElement, position, StringComparison.OrdinalIgnoreCase);
+                    if (closingTag < 0)
+                    {
+                        output.Append(html, position, html.Length - position);
+                        break;
+                    }
+                    output.Append(html, position, closingTag - position);
+                    position = closingTag;
+                    rawTextElement = null;
+                    continue;
+                }
+
+                if (html[position] != '<')
+                {
+                    int nextTag = html.IndexOf('<', position);
+                    int end = nextTag < 0 ? html.Length : nextTag;
+                    output.Append(html, position, end - position);
+                    position = end;
+                    continue;
+                }
+
+                int tagEnd = FindHtmlTagEnd(html, position);
+                if (tagEnd < 0)
+                {
+                    output.Append(html, position, html.Length - position);
+                    break;
+                }
+
+                string token = html.Substring(position, tagEnd - position + 1);
+                string tagName;
+                bool closing;
+                bool selfClosing;
+                bool special;
+                bool parsed = TryGetHtmlTagInfo(token, out tagName, out closing, out selfClosing, out special);
+                bool rawElement = parsed && !special &&
+                                  (tagName.Equals("script", StringComparison.OrdinalIgnoreCase) ||
+                                   tagName.Equals("style", StringComparison.OrdinalIgnoreCase) ||
+                                   tagName.Equals("pre", StringComparison.OrdinalIgnoreCase) ||
+                                   tagName.Equals("textarea", StringComparison.OrdinalIgnoreCase));
+                bool block = special || (parsed && HtmlBlockElements.Contains(tagName) && !rawElement);
+
+                if (block)
+                {
+                    if (closing)
+                    {
+                        indent = Math.Max(0, indent - 1);
+                    }
+                    AppendHtmlIndent(output, indent, indentSize);
+                }
+
+                output.Append(token);
+                position = tagEnd + 1;
+
+                if (parsed && !closing && !special && rawElement && !selfClosing)
+                {
+                    rawTextElement = tagName;
+                }
+                if (block && !closing)
+                {
+                    if (!special && !selfClosing && !HtmlVoidElements.Contains(tagName))
+                    {
+                        indent++;
+                    }
+                    AppendHtmlNewLine(output);
+                }
+                else if (block)
+                {
+                    AppendHtmlNewLine(output);
+                }
+            }
+
+            return output.ToString();
+        }
+
+        private static int FindHtmlTagEnd(string html, int start)
+        {
+            if (html.IndexOf("<!--", start, StringComparison.Ordinal) == start)
+            {
+                int commentEnd = html.IndexOf("-->", start + 4, StringComparison.Ordinal);
+                return commentEnd < 0 ? html.Length - 1 : commentEnd + 2;
+            }
+
+            char quote = '\0';
+            for (int i = start + 1; i < html.Length; i++)
+            {
+                char current = html[i];
+                if (quote != '\0')
+                {
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+                }
+                else if (current == '\'' || current == '"')
+                {
+                    quote = current;
+                }
+                else if (current == '>')
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private static bool TryGetHtmlTagInfo(string token, out string name, out bool closing, out bool selfClosing, out bool special)
+        {
+            name = string.Empty;
+            closing = false;
+            selfClosing = false;
+            special = false;
+
+            int index = 1;
+            while (index < token.Length && char.IsWhiteSpace(token[index]))
+            {
+                index++;
+            }
+            if (index >= token.Length)
+            {
+                return false;
+            }
+            if (token[index] == '!' || token[index] == '?')
+            {
+                special = true;
+                return true;
+            }
+            if (token[index] == '/')
+            {
+                closing = true;
+                index++;
+            }
+            int nameStart = index;
+            while (index < token.Length &&
+                   (char.IsLetterOrDigit(token[index]) || token[index] == '-' || token[index] == ':'))
+            {
+                index++;
+            }
+            if (index == nameStart)
+            {
+                return false;
+            }
+
+            name = token.Substring(nameStart, index - nameStart);
+            selfClosing = token.TrimEnd().EndsWith("/>", StringComparison.Ordinal);
+            return true;
+        }
+
+        private static void AppendHtmlIndent(StringBuilder output, int indent, int indentSize)
+        {
+            if (output.Length > 0 && output[output.Length - 1] != '\n')
+            {
+                output.AppendLine();
+            }
+            output.Append(' ', indent * indentSize);
+        }
+
+        private static void AppendHtmlNewLine(StringBuilder output)
+        {
+            if (output.Length > 0 && output[output.Length - 1] != '\n')
+            {
+                output.AppendLine();
+            }
+        }
+
+        private static string FormatCss(string css, int indentSize)
+        {
+            StringBuilder output = new StringBuilder(css.Length + 32);
+            int indent = 0;
+            int parentheses = 0;
+            char quote = '\0';
+            bool escaped = false;
+            bool inComment = false;
+            bool pendingSpace = false;
+
+            for (int i = 0; i < css.Length; i++)
+            {
+                char current = css[i];
+                char next = i + 1 < css.Length ? css[i + 1] : '\0';
+
+                if (inComment)
+                {
+                    output.Append(current);
+                    if (current == '*' && next == '/')
+                    {
+                        output.Append(next);
+                        i++;
+                        inComment = false;
+                    }
+                    continue;
+                }
+                if (quote != '\0')
+                {
+                    output.Append(current);
+                    if (escaped)
+                    {
+                        escaped = false;
+                    }
+                    else if (current == '\\')
+                    {
+                        escaped = true;
+                    }
+                    else if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+                    continue;
+                }
+                if (current == '/' && next == '*')
+                {
+                    TrimTrailingSpaces(output);
+                    output.Append("/*");
+                    i++;
+                    inComment = true;
+                    pendingSpace = false;
+                    continue;
+                }
+                if (current == '\'' || current == '"')
+                {
+                    if (pendingSpace && output.Length > 0 && !char.IsWhiteSpace(output[output.Length - 1]))
+                    {
+                        output.Append(' ');
+                    }
+                    pendingSpace = false;
+                    quote = current;
+                    output.Append(current);
+                    continue;
+                }
+                if (current == '(')
+                {
+                    parentheses++;
+                }
+                else if (current == ')')
+                {
+                    parentheses = Math.Max(0, parentheses - 1);
+                }
+
+                if (char.IsWhiteSpace(current))
+                {
+                    pendingSpace = true;
+                    continue;
+                }
+                if (current == '{' && parentheses == 0)
+                {
+                    TrimTrailingSpaces(output);
+                    output.Append(" {");
+                    indent++;
+                    AppendCssNewLine(output, indent, indentSize);
+                    pendingSpace = false;
+                    continue;
+                }
+                if (current == '}' && parentheses == 0)
+                {
+                    TrimTrailingSpaces(output);
+                    indent = Math.Max(0, indent - 1);
+                    if (output.Length > 0 && output[output.Length - 1] != '\n')
+                    {
+                        output.AppendLine();
+                    }
+                    output.Append(' ', indent * indentSize).Append('}');
+                    AppendCssNewLine(output, indent, indentSize);
+                    pendingSpace = false;
+                    continue;
+                }
+                if (current == ';' && parentheses == 0)
+                {
+                    TrimTrailingSpaces(output);
+                    output.Append(';');
+                    AppendCssNewLine(output, indent, indentSize);
+                    pendingSpace = false;
+                    continue;
+                }
+                if (current == ':')
+                {
+                    TrimTrailingSpaces(output);
+                    output.Append(": ");
+                    pendingSpace = false;
+                    continue;
+                }
+                if (current == ',')
+                {
+                    TrimTrailingSpaces(output);
+                    output.Append(", ");
+                    pendingSpace = false;
+                    continue;
+                }
+                if (pendingSpace && output.Length > 0 && !char.IsWhiteSpace(output[output.Length - 1]) &&
+                    output[output.Length - 1] != '\n')
+                {
+                    output.Append(' ');
+                }
+                output.Append(current);
+                pendingSpace = false;
+            }
+
+            return output.ToString().TrimEnd();
+        }
+
+        private static void TrimTrailingSpaces(StringBuilder output)
+        {
+            while (output.Length > 0 && (output[output.Length - 1] == ' ' || output[output.Length - 1] == '\t'))
+            {
+                output.Length--;
+            }
+        }
+
+        private static void AppendCssNewLine(StringBuilder output, int indent, int indentSize)
+        {
+            if (output.Length > 0 && output[output.Length - 1] != '\n')
+            {
+                output.AppendLine();
+            }
+            output.Append(' ', indent * indentSize);
+        }
+
+        private void RefreshCsvPreview(string content)
+        {
+            CsvView.ItemsSource = null;
+            CsvView.Columns.Clear();
+            if (content.Length == 0)
+            {
+                StatusText.Text = "CSV-Datei enthält keine Daten.";
+                return;
+            }
+
+            char delimiter = DetectCsvDelimiter(content);
+            List<List<string>> records;
+            try
+            {
+                records = ParseCsv(content, delimiter);
+            }
+            catch (FormatException ex)
+            {
+                StatusText.Text = "CSV-Vorschau nicht möglich: " + ex.Message;
+                return;
+            }
+            if (records.Count == 0)
+            {
+                StatusText.Text = "CSV-Datei enthält keine Daten.";
+                return;
+            }
+
+            int columnCount = records.Max(record => record.Count);
+            DataTable table = new DataTable();
+            HashSet<string> headers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int column = 0; column < columnCount; column++)
+            {
+                string header = column < records[0].Count ? records[0][column].Trim() : string.Empty;
+                if (header.Length == 0)
+                {
+                    header = "Spalte " + (column + 1).ToString(CultureInfo.InvariantCulture);
+                }
+                string uniqueHeader = header;
+                int suffix = 2;
+                while (!headers.Add(uniqueHeader))
+                {
+                    uniqueHeader = header + " (" + suffix.ToString(CultureInfo.InvariantCulture) + ")";
+                    suffix++;
+                }
+                table.Columns.Add(uniqueHeader, typeof(string));
+            }
+
+            for (int row = 1; row < records.Count; row++)
+            {
+                DataRow dataRow = table.NewRow();
+                for (int column = 0; column < columnCount && column < records[row].Count; column++)
+                {
+                    dataRow[column] = records[row][column];
+                }
+                table.Rows.Add(dataRow);
+            }
+
+            CsvView.FontSize = fontSize;
+            CsvView.ItemsSource = table.DefaultView;
+            StatusText.Text = "CSV – " + Math.Max(0, records.Count - 1).ToString(CultureInfo.CurrentCulture) +
+                              " Datenzeilen, Trennzeichen " + (delimiter == '\t' ? "Tab" : delimiter.ToString());
+        }
+
+        private static char DetectCsvDelimiter(string content)
+        {
+            char[] candidates = { ',', ';', '\t' };
+            char selected = ',';
+            int bestCount = -1;
+            foreach (char candidate in candidates)
+            {
+                int count = CountCsvDelimitersInFirstRecord(content, candidate);
+                if (count > bestCount)
+                {
+                    bestCount = count;
+                    selected = candidate;
+                }
+            }
+            return selected;
+        }
+
+        private static int CountCsvDelimitersInFirstRecord(string content, char delimiter)
+        {
+            bool quoted = false;
+            int count = 0;
+            for (int i = 0; i < content.Length; i++)
+            {
+                char current = content[i];
+                if (current == '"')
+                {
+                    if (quoted && i + 1 < content.Length && content[i + 1] == '"')
+                    {
+                        i++;
+                    }
+                    else
+                    {
+                        quoted = !quoted;
+                    }
+                }
+                else if (!quoted && (current == '\r' || current == '\n'))
+                {
+                    break;
+                }
+                else if (!quoted && current == delimiter)
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        private static List<List<string>> ParseCsv(string content, char delimiter)
+        {
+            List<List<string>> records = new List<List<string>>();
+            List<string> record = new List<string>();
+            StringBuilder field = new StringBuilder();
+            bool quoted = false;
+            bool endedWithRecordSeparator = false;
+
+            for (int i = 0; i < content.Length; i++)
+            {
+                char current = content[i];
+                if (quoted)
+                {
+                    if (current == '"' && i + 1 < content.Length && content[i + 1] == '"')
+                    {
+                        field.Append('"');
+                        i++;
+                    }
+                    else if (current == '"')
+                    {
+                        quoted = false;
+                    }
+                    else
+                    {
+                        field.Append(current);
+                    }
+                    endedWithRecordSeparator = false;
+                }
+                else if (current == '"' && field.Length == 0)
+                {
+                    quoted = true;
+                    endedWithRecordSeparator = false;
+                }
+                else if (current == delimiter)
+                {
+                    record.Add(field.ToString());
+                    field.Clear();
+                    endedWithRecordSeparator = false;
+                }
+                else if (current == '\r' || current == '\n')
+                {
+                    record.Add(field.ToString());
+                    field.Clear();
+                    records.Add(record);
+                    record = new List<string>();
+                    if (current == '\r' && i + 1 < content.Length && content[i + 1] == '\n')
+                    {
+                        i++;
+                    }
+                    endedWithRecordSeparator = true;
+                }
+                else
+                {
+                    field.Append(current);
+                    endedWithRecordSeparator = false;
+                }
+            }
+
+            if (quoted)
+            {
+                throw new FormatException("Ein Anführungszeichen in einem Feld wurde nicht geschlossen.");
+            }
+            if (!endedWithRecordSeparator || record.Count > 0 || field.Length > 0)
+            {
+                record.Add(field.ToString());
+                records.Add(record);
+            }
+            return records;
         }
 
         private static FlowDocument RenderMarkdown(string markdown, double fontSize)

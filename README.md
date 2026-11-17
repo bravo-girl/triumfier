@@ -1,14 +1,14 @@
 # RhaView
 
-Ein kleiner Windows-Desktop-Viewer für JSON-, XML-, Markdown- und TXT-Dateien.
+Ein kleiner Windows-Desktop-Viewer und Editor für JSON, XML, Markdown, HTML, CSS, CSV und Text.
 
 ## Voraussetzungen
 
 - Windows 11
-- Für den Ziel-PC ist keine .NET-Installation erforderlich
-- Die Anwendung wird als einzelne, selbstenthaltende Windows-x64-EXE veröffentlicht
+- Verwendet das in Windows 11 integrierte .NET Framework 4.8
+- Es werden keine .NET-Laufzeit und keine Drittanbieterbibliotheken in die Anwendung gebündelt
 
-Die EXE enthält die benötigte .NET-Desktop-Laufzeit. Derzeit ist das Ziel Windows x64; ARM64 wird nicht mit dieser Ausgabe abgedeckt.
+RhaView nutzt ausschließlich WPF- und .NET-Framework-Komponenten, die Windows bereitstellt. Dadurch ist die EXE deutlich kleiner; sie benötigt die Windows-eigene .NET-Framework-Laufzeit und ist nicht selbstenthaltend.
 Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 
 ## Funktionen
@@ -17,11 +17,14 @@ Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 - Mehrere Dateien gleichzeitig in eigenen Fenstern öffnen
 - Dateien als Kommandozeilenargumente übergeben; `*` und `?` im Dateinamen werden unterstützt, zum Beispiel `RhaView .\*.xml`
 - Liste der 50 zuletzt geöffneten Dateien, lokal neben der EXE gespeichert
-- JSON, XML, Markdown und Text bearbeiten und speichern
+- JSON, XML, Markdown, HTML, CSS, CSV und Text bearbeiten und speichern
 - Markdown-Quelltext mit Live-Vorschau bearbeiten
+- HTML/CSS-Quelltext formatieren
+- CSV als Tabelle mit automatisch an Zellinhalten angepassten Spalten anzeigen
 - Rückgängig/Wiederholen, Weitersuchen und Treffer markieren
 - Statusleiste mit Dateiname, Größe, Zeile/Spalte und Änderungsstatus
-- Gängige Tastenkürzel: Strg+O, Strg+S, Strg+Umschalt+S, Strg+Z, Strg+Y, Strg+F, F3 und Umschalt+F3
+- Ein-Tasten-Kürzel: F1 Hilfe, F2 Speichern, F3 Weitersuchen, F4 Öffnen, F6 Suche, F8 vorheriger Treffer
+- Strg-Tastenkürzel bleiben als Alternative verfügbar
 - Datei speichern oder **Speichern unter…**
 - JSON validieren und einrücken
 - XML validieren und formatiert anzeigen
@@ -29,14 +32,14 @@ Die Benutzeroberfläche und Fehlermeldungen sind auf Deutsch.
 - Markdown-Ansicht und Quelltext umschalten
 - Reguläre Suche mit Weitersuchen und Beachtung der Groß-/Kleinschreibung
 - Zeilenumbruch und Schriftgröße einstellen
-- Einrückung für JSON und XML auf 1 bis 8 Leerzeichen einstellen
+- Einrückung für JSON, XML, HTML und CSS auf 1 bis 8 Leerzeichen einstellen; Standard: 3
 - Deutsches Hilfemenü mit Kommandozeilenhilfe, Tastenkürzeln, Programminformation und Lizenz
 - TXT-Dateien unverändert lesen
 - Ungültiges JSON/XML mit verständlichem Status anzeigen und den Originaltext beibehalten
 
-JSON und XML werden standardmäßig formatiert angezeigt. **Speichern** schreibt die formatierte JSON-/XML-Ansicht; bei Markdown und Text bleibt der Quelltext unverändert. UTF-8-, UTF-16- und UTF-32-BOMs werden erkannt und beim Speichern erhalten. Dateien ohne BOM werden als striktes UTF-8 gelesen und bleiben BOM-los. Die Markdown-Darstellung unterstützt bewusst einen häufig genutzten Teilumfang und ist kein vollständiger CommonMark-Parser.
+JSON, XML, HTML und CSS werden standardmäßig formatiert angezeigt. **Speichern** schreibt den aktuellen Editorinhalt; CSV wird in einer Tabelle mit separat editierbarem Quelltext angezeigt. UTF-8-, UTF-16- und UTF-32-BOMs werden erkannt und beim Speichern erhalten. Dateien ohne BOM werden als striktes UTF-8 gelesen und bleiben BOM-los. Die Markdown-Darstellung unterstützt bewusst einen häufig genutzten Teilumfang und ist kein vollständiger CommonMark-Parser.
 
-Die letzten Dateien und eine abweichende Einrückung werden in `RhaView.settings.xml` im EXE-Ordner gespeichert. Die Einrückung ist standardmäßig 2 Leerzeichen; dieser Wert wird nur dann in der Einstellungsdatei abgelegt, wenn er geändert wurde. Zum Schreiben der lokalen Einstellungen braucht die Anwendung Schreibrechte im EXE-Ordner.
+Die letzten Dateien und eine abweichende Einrückung werden in `RhaView.settings.xml` im EXE-Ordner gespeichert. Die Einrückung ist standardmäßig 3 Leerzeichen; dieser Wert wird nur dann in der Einstellungsdatei abgelegt, wenn er geändert wurde. Zum Schreiben der lokalen Einstellungen braucht die Anwendung Schreibrechte im EXE-Ordner.
 
 ## Lizenz
 
@@ -44,12 +47,10 @@ RhaView 1.0 steht unter der MIT-Lizenz. Private und kommerzielle Nutzung ist erl
 
 ## Build
 
-Im Projektverzeichnis ausführen:
+Mit dem .NET SDK bauen:
 
 ```powershell
-dotnet publish NativeViewer\RhaView.csproj -c Release -r win-x64 --source https://api.nuget.org/v3/index.json
+dotnet build NativeViewer\RhaView.csproj -c Release
 ```
 
-Die weiterzugebende Datei liegt anschließend in `NativeViewer\bin\Release\net10.0-windows\win-x64\publish\RhaView.exe`. Diese EXE kann allein auf einen Windows-11-x64-PC kopiert und dort gestartet werden. Es werden keine externen NuGet-Pakete verwendet.
-
-Beim Veröffentlichen lädt das .NET SDK die offiziellen .NET-Laufzeitpakete; diese sind in der EXE enthalten und müssen auf dem Ziel-PC nicht installiert werden.
+Die EXE liegt anschließend in `NativeViewer\bin\Release\net48\RhaView.exe`. Es werden keine externen NuGet-Laufzeitpakete verwendet oder in die EXE kopiert. Für den Build kann das .NET SDK Referenzassemblys als reine Build-Abhängigkeit wiederherstellen.
